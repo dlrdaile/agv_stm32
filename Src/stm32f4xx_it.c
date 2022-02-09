@@ -64,7 +64,7 @@ extern UART_HandleTypeDef huart5;
 extern TIM_HandleTypeDef htim7;
 
 /* USER CODE BEGIN EV */
-
+#include "startup.h"
 /* USER CODE END EV */
 
 /******************************************************************************/
@@ -160,7 +160,7 @@ void DMA1_Stream0_IRQHandler(void)
   /* USER CODE END DMA1_Stream0_IRQn 0 */
   HAL_DMA_IRQHandler(&hdma_uart5_rx);
   /* USER CODE BEGIN DMA1_Stream0_IRQn 1 */
-
+    on_UART_IDLE(&huart5);
   /* USER CODE END DMA1_Stream0_IRQn 1 */
 }
 
@@ -172,8 +172,9 @@ void DMA1_Stream2_IRQHandler(void)
   /* USER CODE BEGIN DMA1_Stream2_IRQn 0 */
 
   /* USER CODE END DMA1_Stream2_IRQn 0 */
-  /* USER CODE BEGIN DMA1_Stream2_IRQn 1 */
-
+    /* USER CODE BEGIN DMA1_Stream2_IRQn 1 */
+    HAL_DMA_IRQHandler(&hdma_uart4_rx);
+    on_UART_IDLE(&huart4);
   /* USER CODE END DMA1_Stream2_IRQn 1 */
 }
 

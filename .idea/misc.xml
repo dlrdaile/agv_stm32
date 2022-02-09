@@ -1,4 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="CMakeWorkspace" PROJECT_DIR="$PROJECT_DIR$" />
+  <component name="com.itcodebox.notebooks.projectservice.ProjectUIState">
+    <option name="notebookPaneVisible" value="true" />
+    <option name="chapterPaneVisible" value="true" />
+    <option name="notePaneVisible" value="true" />
+    <option name="selectedNotebookId" value="2" />
+    <option name="selectedChapterId" value="3" />
+    <option name="selectedNoteId" value="4" />
+  </component>
 </project>
