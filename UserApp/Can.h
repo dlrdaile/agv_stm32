@@ -10,7 +10,7 @@
 #include "main.h"
 #include "can.h"
 #include <string>
-#include <vector>
+#include <queue>
 using namespace std;
 #define ADRRESS 1
 #define Generate_msgID(Instruct,Index) (uint32_t)(((Index)<<16) | ((Instruct)<<8) | (ADRRESS))
@@ -25,7 +25,7 @@ public:
 public:
     CAN_FilterTypeDef *canFilter;
     CAN_HandleTypeDef *hcan;
-    vector<string> RxBUFFER;
+    queue<string> RxBUFFER;
     uint8_t Rx_CMD_BUFFER[16];
 };
 #endif //PROJECT_CAR_CAN_H

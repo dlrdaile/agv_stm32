@@ -9,7 +9,7 @@
 #define PROJECT_CAR_USART_H
 
 #include "main.h"
-#include <vector>
+#include <queue>
 #include <string>
 #include "usart.h"
 #include <cstdarg>
@@ -42,8 +42,8 @@ public:
 //    UartState_TypeDef *p_work_flag;
     uint8_t Char_Num;
 //    UartState_TypeDef work_flag;
-    vector<string> RxBuffer;
-    vector<string> TxBuffer;
+    queue<string> RxBuffer;
+    queue<string> TxBuffer;
     uint8_t *Rx_CMD_Buffer;
     uint8_t *Rx_Uart_Data;
     uint32_t Timeout;

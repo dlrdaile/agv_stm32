@@ -79,7 +79,7 @@ void Usart::UART_RxCpltCB() {
     if(this->IslimitLen)
     {
         string rxdata = (char *)this->Rx_CMD_Buffer;
-        this->RxBuffer.push_back(rxdata);
+        this->RxBuffer.push(rxdata);
     }
     else
     {
@@ -87,7 +87,7 @@ void Usart::UART_RxCpltCB() {
             if (this->Char_Num != 0) {
                 this->Rx_Uart_Data[this->Char_Num] = '\0';
                 string rxdata = (char *)this->Rx_Uart_Data;
-                this->RxBuffer.push_back(rxdata);
+                this->RxBuffer.push(rxdata);
                 this->Char_Num = 0;
             } else {
                 this->SendData("the current instruct is empty!\n");

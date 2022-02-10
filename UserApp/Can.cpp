@@ -97,7 +97,7 @@ void Can::CAN_ReadMsg() {
         HAL_OK) {
         Rx_CMD_BUFFER[RxHeader.DLC] = '\0';
         string temp = (char *) Rx_CMD_BUFFER;
-        this->RxBUFFER.push_back(temp);
+        this->RxBUFFER.push(temp);
     } else {
         debug_uart.SendData("receive data error!\n");
     }
