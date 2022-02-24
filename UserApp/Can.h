@@ -12,15 +12,14 @@
 #include <string>
 #include <queue>
 using namespace std;
-#define ADRRESS 1
-#define Generate_msgID(Instruct,Index) (uint32_t)(((Index)<<16) | ((Instruct)<<8) | (ADRRESS))
+
 
 class Can {
 public:
     Can(CAN_HandleTypeDef *hcan,CAN_FilterTypeDef *canFilter = NULL);
     ~Can();
     HAL_StatusTypeDef CAN_Init();
-    void CAN_SendMsg(uint8_t Instruct,uint8_t Index, uint8_t *TxData, uint8_t Data_Len);
+    void CAN_SendMsg(uint32_t ExtID,uint8_t *TxData, uint8_t Data_Len=0);
     void CAN_ReadMsg ();
 public:
     CAN_FilterTypeDef *canFilter;

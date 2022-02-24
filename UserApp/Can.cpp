@@ -74,9 +74,9 @@ HAL_StatusTypeDef Can::CAN_Init() {
     return result;
 }
 
-void Can::CAN_SendMsg(uint8_t Instruct, uint8_t Index, uint8_t *TxData, uint8_t Data_Len) {
+void Can::CAN_SendMsg(uint32_t ExtID, uint8_t *TxData, uint8_t Data_Len) {
     CAN_TxHeaderTypeDef TxHeader;
-    TxHeader.ExtId = Generate_msgID(Instruct, Index);
+    TxHeader.ExtId = ExtID;
     TxHeader.StdId = 0;
     TxHeader.RTR = CAN_RTR_DATA;
     TxHeader.IDE = CAN_ID_EXT;

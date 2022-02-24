@@ -10,7 +10,7 @@
 #include "Led.h"
 #include "Usart.h"
 #include "Can.h"
-
+#include "ros.h"
 Key hsw2(SW2_GPIO_Port, SW2_Pin);
 Key hsw3(SW3_GPIO_Port, SW3_Pin);
 
@@ -23,6 +23,7 @@ Usart ros_uart(&huart5, true);
 Can motor_can(&hcan1);
 
 void startup() {
+    ros::NodeHandle nh;
     debug_uart.SendData("hello,%s\n", "world");
     if (motor_can.CAN_Init() == HAL_OK)
         debug_uart.SendData("start work!\n");
