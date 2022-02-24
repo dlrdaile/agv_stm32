@@ -22,7 +22,7 @@ typedef enum {
 } KeyButtenState_TypeDef;
 
 
-class Key : protected GPIO_Base {
+class Key : public GPIO_Base {
 public:
     Key(GPIO_TypeDef *Key_GPIO_Port, uint16_t Key_GPIO_Pin, bool Key_OnState = on_High,
         KeyButtenState_TypeDef ButtenFlag = BUTTEN_OFF, KeyState_TypeDef KeyState = KEY_CHECK);

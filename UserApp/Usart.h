@@ -24,8 +24,9 @@ using namespace std;
 class Usart {
 public:
     Usart(UART_HandleTypeDef *huart, bool IslimitLen,uint32_t Timeout = HAL_MAX_DELAY);
+    explicit Usart(Usart &u);
 
-//    ~Usart();
+    ~Usart();
     HAL_StatusTypeDef SendData(string &data);
     HAL_StatusTypeDef SendData(const char data,uint16_t len = 1);
     HAL_StatusTypeDef SendData(const char *format,...);

@@ -10,7 +10,7 @@
 #ifdef __cplusplus
 #include "GPIO_Base.h"
 #include "main.h"
-class Led : protected GPIO_Base {
+class Led : public GPIO_Base {
 public:
     /**
      * @brief 创建LED对象

@@ -14,6 +14,7 @@ extern "C" {
 void startup();
 void timely_detect(TIM_HandleTypeDef *htim);
 void on_UART_IDLE(UART_HandleTypeDef *huart);
+//void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
 #ifdef __cplusplus
 }
 #endif

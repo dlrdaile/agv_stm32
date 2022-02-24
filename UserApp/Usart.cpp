@@ -7,6 +7,7 @@
 ********************************************************************************/
 #include "Usart.h"
 #include <cstdio>
+
 /*Usart::Usart(UART_HandleTypeDef *huart, bool IslimitLen) {
     this->huart = huart;
     this->IslimitLen = IslimitLen;
@@ -19,47 +20,46 @@
     }
 }*/
 
-/*Usart::~Usart() {
-    if(this->p_work_flag != NULL) {
-        delete this->p_work_flag;
-        this->p_work_flag = NULL;
+Usart::~Usart() {
+    if (this->Rx_CMD_Buffer != NULL) {
+        delete[] this->Rx_CMD_Buffer;
+        this->Rx_CMD_Buffer = NULL;
     }
-    if(this->p_Char_Num != NULL) {
-        delete this->p_Char_Num;
-        this->p_Char_Num = NULL;
+    if (this->Rx_Uart_Data != NULL) {
+        delete[] this->Rx_Uart_Data;
+        this->Rx_Uart_Data = NULL;
     }
-}*/
-Usart::Usart(UART_HandleTypeDef *huart, bool IslimitLen,uint32_t Timeout) {
+}
+
+Usart::Usart(UART_HandleTypeDef *huart, bool IslimitLen, uint32_t Timeout) {
     this->huart = huart;
     this->IslimitLen = IslimitLen;
     this->Char_Num = 0;
     this->Timeout = Timeout;
     __HAL_UART_DISABLE_IT(huart, UART_IT_RXNE);
     __HAL_UART_DISABLE_IT(huart, UART_IT_TC);
-    if(this->IslimitLen)
-    {
+    if (this->IslimitLen) {
         this->Rx_CMD_Buffer = new uint8_t[LIMIT_BuFFER_SIZE + 1];
         this->Rx_CMD_Buffer[LIMIT_BuFFER_SIZE] = '\0';
         this->Rx_Uart_Data = NULL;
-        HAL_UART_Receive_DMA(huart, this->Rx_CMD_Buffer, LIMIT_BuFFER_SIZE);
-    } else
-    {
-        this->Rx_CMD_Buffer = new uint8_t;
+        HAL_UART_Receive_DMA(this->huart, this->Rx_CMD_Buffer, LIMIT_BuFFER_SIZE);
+    } else {
+        this->Rx_CMD_Buffer = new uint8_t[1];
         this->Rx_Uart_Data = new uint8_t[MAX_BUFFER_SIZE];
-        HAL_UART_Receive_DMA(huart, this->Rx_CMD_Buffer, 1);
+        HAL_UART_Receive_DMA(this->huart, this->Rx_CMD_Buffer, 1);
     }
 }
 
 HAL_StatusTypeDef Usart::SendData(string &data) {
     HAL_StatusTypeDef status;
-    status = HAL_UART_Transmit(this->huart,(uint8_t *)data.c_str(),data.size(),this->Timeout);
+    status = HAL_UART_Transmit(this->huart, (uint8_t *) data.c_str(), data.size(), this->Timeout);
     return status;
 }
 
 HAL_StatusTypeDef Usart::SendData(const char data, uint16_t len) {
     HAL_StatusTypeDef status;
-    string temp(len,data);
-    status = HAL_UART_Transmit(this->huart,(uint8_t *)temp.c_str(),temp.size(),this->Timeout);
+    string temp(len, data);
+    status = HAL_UART_Transmit(this->huart, (uint8_t *) temp.c_str(), temp.size(), this->Timeout);
     return status;
 }
 
@@ -67,26 +67,23 @@ HAL_StatusTypeDef Usart::SendData(const char *format, ...) {
     HAL_StatusTypeDef status;
     char temp_txBuffer[100];
     va_list args;
-    va_start(args,format);
-    this->Print_data(temp_txBuffer,format,args);
+    va_start(args, format);
+    this->Print_data(temp_txBuffer, format, args);
     va_end(args);
     string temp(temp_txBuffer);
-    status = HAL_UART_Transmit(this->huart,(uint8_t *)temp.c_str(),temp.size(),this->Timeout);
+    status = HAL_UART_Transmit(this->huart, (uint8_t *) temp.c_str(), temp.size(), this->Timeout);
     return status;
 }
 
 void Usart::UART_RxCpltCB() {
-    if(this->IslimitLen)
-    {
-        string rxdata = (char *)this->Rx_CMD_Buffer;
+    if (this->IslimitLen) {
+        string rxdata = (char *) this->Rx_CMD_Buffer;
         this->RxBuffer.push(rxdata);
-    }
-    else
-    {
+    } else {
         if (this->Rx_CMD_Buffer[0] == ';') {
             if (this->Char_Num != 0) {
                 this->Rx_Uart_Data[this->Char_Num] = '\0';
-                string rxdata = (char *)this->Rx_Uart_Data;
+                string rxdata = (char *) this->Rx_Uart_Data;
                 this->RxBuffer.push(rxdata);
                 this->Char_Num = 0;
             } else {
@@ -105,7 +102,7 @@ void Usart::UART_RxCpltCB() {
 }
 
 void Usart::UART_IDLECB() {
-    if (__HAL_UART_GET_IT_SOURCE(this->huart, UART_IT_IDLE) != RESET){
+    if (__HAL_UART_GET_IT_SOURCE(this->huart, UART_IT_IDLE) != RESET) {
         __HAL_UART_CLEAR_IDLEFLAG(this->huart);
         __HAL_UART_DISABLE_IT(this->huart, UART_IT_IDLE);
         uint8_t data_len = this->IslimitLen ? LIMIT_BuFFER_SIZE : 1;
@@ -115,8 +112,26 @@ void Usart::UART_IDLECB() {
 
 int Usart::Print_data(char *str, const char *format, va_list args) {
     int done;
-    done = vsprintf(str,format,args);
+    done = vsprintf(str, format, args);
     return done;
+}
+
+Usart::Usart(Usart &u) {
+    this->huart = u.huart;
+    this->IslimitLen = u.IslimitLen;
+    this->Char_Num = 0;
+    this->Timeout = u.Timeout;
+    __HAL_UART_DISABLE_IT(u.huart, UART_IT_RXNE);
+    __HAL_UART_DISABLE_IT(u.huart, UART_IT_TC);
+    if (this->IslimitLen) {
+        this->Rx_CMD_Buffer = new uint8_t[LIMIT_BuFFER_SIZE + 1];
+        this->Rx_Uart_Data = NULL;
+        HAL_UART_Receive_DMA(this->huart, this->Rx_CMD_Buffer, LIMIT_BuFFER_SIZE);
+    } else {
+        this->Rx_CMD_Buffer = new uint8_t[1];
+        this->Rx_Uart_Data = new uint8_t[MAX_BUFFER_SIZE];
+        HAL_UART_Receive_DMA(this->huart, this->Rx_CMD_Buffer, 1);
+    }
 }
 
 
