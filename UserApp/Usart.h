@@ -23,7 +23,7 @@ using namespace std;
 
 class Usart {
 public:
-    Usart(UART_HandleTypeDef *huart, bool IslimitLen,uint32_t Timeout = HAL_MAX_DELAY);
+    Usart(UART_HandleTypeDef &huart, bool IslimitLen,uint32_t Timeout = HAL_MAX_DELAY);
     explicit Usart(Usart &u);
 
     ~Usart();

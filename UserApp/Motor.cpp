@@ -65,7 +65,7 @@ void Motor::InitState() {
     uint8_t RxData[8];
     if (HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &RxHeader, RxData) !=
         HAL_OK) {
-        debug_uart.SendData('init car state error!\r\n');
+        debug_uart.SendData("init car state error!\r\n");
         while (true);
     }
     if(RxHeader.ExtId == battery_msgID)
@@ -75,7 +75,7 @@ void Motor::InitState() {
     }
     else
     {
-        debug_uart.SendData('read car power error!\r\n');
+        debug_uart.SendData("read car power error!\r\n");
     }
 }
 
