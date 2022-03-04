@@ -11,10 +11,14 @@
 extern "C" {
 #endif
 #include "main.h"
+#include "FreeRTOSConfig.h"
+#include "UserConfig.h"
+//创建几个任务队列
+
 void startup();
 void timely_detect(TIM_HandleTypeDef *htim);
-void on_UART_IDLE(UART_HandleTypeDef *huart);
-//void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
+/*void on_UART_IDLE(UART_HandleTypeDef *huart);
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);*/
 #ifdef __cplusplus
 }
 #endif

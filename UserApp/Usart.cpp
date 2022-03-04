@@ -36,8 +36,8 @@ Usart::Usart(UART_HandleTypeDef &huart, bool IslimitLen, uint32_t Timeout) {
     this->IslimitLen = IslimitLen;
     this->Char_Num = 0;
     this->Timeout = Timeout;
-/*    __HAL_UART_DISABLE_IT(huart, UART_IT_RXNE);
-    __HAL_UART_DISABLE_IT(huart, UART_IT_TC);
+    __HAL_UART_DISABLE_IT(&huart, UART_IT_RXNE);
+    __HAL_UART_DISABLE_IT(&huart, UART_IT_TC);
     if (this->IslimitLen) {
         this->Rx_CMD_Buffer = new uint8_t[LIMIT_BuFFER_SIZE + 1];
         this->Rx_CMD_Buffer[LIMIT_BuFFER_SIZE] = '\0';
@@ -47,7 +47,7 @@ Usart::Usart(UART_HandleTypeDef &huart, bool IslimitLen, uint32_t Timeout) {
         this->Rx_CMD_Buffer = new uint8_t[1];
         this->Rx_Uart_Data = new uint8_t[MAX_BUFFER_SIZE];
         HAL_UART_Receive_DMA(this->huart, this->Rx_CMD_Buffer, 1);
-    }*/
+    }
 }
 
 HAL_StatusTypeDef Usart::SendData(std::string &data) {

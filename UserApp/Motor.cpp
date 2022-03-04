@@ -8,77 +8,140 @@
 #include "Motor.h"
 #include "command_length.h"
 #include "Usart.h"
+#include "FreeRTOS.h"
+#include "task.h"
+#include "SEGGER_RTT.h"
 
+#define taskdelaytick 5
 extern Usart debug_uart;
 
-Motor::Motor(Can *mCan) {
-    this->mCan = mCan;
-    this->motion_system_reset();
-    this->InitState();
+HAL_StatusTypeDef Motor::verifyReceive(const CanStatusTypeDef &transtatus, const uint32_t &ExtID) {
+    string name;
+    switch (ExtID) {
+        case setSpeed_msgID:
+            name = "setSpeed";
+            break;
+        case sysReset_msgID:
+            name = "sysReset";
+            break;
+        case mvDirection_msgID:
+            name = "mvDirection";
+            break;
+        case battery_msgID:
+            name = "battery";
+            break;
+    }
+    if (transtatus == CAN_OK) {
+        switch (this->mCan->CAN_ReadMsg(ExtID, this->CanRxBuffer)) {
+            case CAN_OK:
+                return HAL_OK;
+            case CAN_GET_MESSAGE_ERROR:
+                SEGGER_RTT_printf(0, "%s is error because:%s", name.c_str(), "CAN_GET_MESSAGE_ERROR");
+                break;
+            case CAN_RECEIVE_ERROR:
+                SEGGER_RTT_printf(0, "%s is error because:%s", name.c_str(), "CAN_RECEIVE_ERROR");
+                break;
+            case CAN_NO_RECEIVE_ERROR:
+                SEGGER_RTT_printf(0, "%s is error because:%s", name.c_str(), "CAN_NO_RECEIVE_ERROR");
+                break;
+            default:
+                SEGGER_RTT_printf(0, "%s is error because:%s", name.c_str(), "no known the reason");
+                break;
+        }
+    } else {
+        SEGGER_RTT_printf(0, "%s is error because:%s", name.c_str(), "transmit data error");
+    }
+    return HAL_ERROR;
 }
 
-void Motor::setSpeed(uint16_t FL, uint16_t FR, uint16_t RL, uint16_t RR) {
-    uint16_t speed[4]={FL,FR,RL,RR};
+Motor::Motor(CAN_HandleTypeDef &hcan) {
+    this->mCan = new Can(hcan);
+}
+
+Motor::~Motor() {
+    if (this->mCan != NULL) {
+        delete this->mCan;
+        this->mCan = NULL;
+    }
+}
+
+HAL_StatusTypeDef Motor::setSpeed(uint16_t FL, uint16_t FR, uint16_t BL, uint16_t BR) {
+    uint16_t speed[4] = {FL, FR, BL, BR};
     uint8_t *raw_data = (uint8_t *) speed;  //size = 8
-    this->mCan->CAN_SendMsg(setSpeed_msgID,raw_data,DLSEND_41);
+    result = this->mCan->CAN_SendMsg(setSpeed_msgID, raw_data, DLSEND_41);
+    vTaskDelay(taskdelaytick);
+    return this->verifyReceive(result, setSpeed_msgID);
 }
 
-void Motor::motion_system_reset() {
+HAL_StatusTypeDef Motor::motion_system_reset() {
     uint8_t *null_char = 0;
-    this->mCan->CAN_SendMsg(sysReset_msgID,null_char,DLSEND_25);
-
+    result = this->mCan->CAN_SendMsg(sysReset_msgID, null_char, DLSEND_25);
+    vTaskDelay(taskdelaytick);
+    return this->verifyReceive(result, sysReset_msgID);
 }
 
-void Motor::XY_motion(uint16_t speed_x, uint16_t speed_y) {
-    uint16_t raw_data[4]={0, 0, speed_y,speed_x};
-    mCan->CAN_SendMsg(mvDirection_msgID,(uint8_t*) raw_data,DLSEND_42);
+HAL_StatusTypeDef Motor::XY_motion(uint16_t speed_x, uint16_t speed_y) {
+    uint16_t raw_data[4] = {0, 0, speed_y, speed_x};
+    result = mCan->CAN_SendMsg(mvDirection_msgID, (uint8_t *) raw_data, DLSEND_42);
+    vTaskDelay(taskdelaytick);
+    return this->verifyReceive(result, mvDirection_msgID);
 }
 
-void Motor::swerve_motion(uint16_t radius, uint16_t speed) {
-    if(radius == 0) return;
-    uint16_t raw_data[4]={0, (uint16_t)(speed / radius), 0, speed};
-    mCan->CAN_SendMsg(mvDirection_msgID,(uint8_t*) raw_data,DLSEND_42);
+HAL_StatusTypeDef Motor::swerve_motion(uint16_t radius, uint16_t speed) {
+    if (radius == 0) return HAL_ERROR;
+    uint16_t raw_data[4] = {0, (uint16_t) (speed / radius), 0, speed};
+    result = mCan->CAN_SendMsg(mvDirection_msgID, (uint8_t *) raw_data, DLSEND_42);
+    vTaskDelay(taskdelaytick);
+    return this->verifyReceive(result, mvDirection_msgID);
 }
 
-void Motor::rotate_motion(uint16_t rotate_speed) {
-    uint16_t raw_data[4]={0, rotate_speed, 0,0};
-    mCan->CAN_SendMsg(mvDirection_msgID,(uint8_t*) raw_data,DLSEND_42);
+HAL_StatusTypeDef Motor::rotate_motion(uint16_t rotate_speed) {
+    uint16_t raw_data[4] = {0, rotate_speed, 0, 0};
+    result = mCan->CAN_SendMsg(mvDirection_msgID, (uint8_t *) raw_data, DLSEND_42);
+    vTaskDelay(taskdelaytick);
+    return this->verifyReceive(result, mvDirection_msgID);
 }
 
-void Motor::check_battery() {
-    mCan->CAN_SendMsg(battery_msgID,NULL,DLSEND_51);
+HAL_StatusTypeDef Motor::check_battery() {
+    result = mCan->CAN_SendMsg(battery_msgID, NULL, DLSEND_51);
+    vTaskDelay(taskdelaytick);
+    if (HAL_OK == this->verifyReceive(result, battery_msgID)) {
+        this->motor_state.battery_votage = *((uint32_t *) this->CanRxBuffer);
+        return HAL_OK;
+    } else
+        return HAL_ERROR;
 }
 
-void Motor::stop() {
-    this->setSpeed(0,0,0,0);
+HAL_StatusTypeDef Motor::stop() {
+    if (HAL_OK == this->setSpeed(0, 0, 0, 0)) {
+        return HAL_OK;
+    } else {
+        return HAL_ERROR;
+    }
 }
 
-void Motor::InitState() {
-    this->stop();
+HAL_StatusTypeDef Motor::InitState() {
+    if ((this->mCan->CAN_Init() != HAL_OK)
+        || (this->motion_system_reset() != HAL_OK)
+        || (this->stop() != HAL_OK)) {
+        return HAL_ERROR;
+    }
     for (int i = 0; i < 4; ++i) {
         this->motor_state.FL_speed[i] = 0;
     }
-    this->check_battery();
-    mCan->CAN_ReadMsg();
-    HAL_Delay(100);
-    CAN_RxHeaderTypeDef RxHeader;
-    uint8_t RxData[8];
-    if (HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &RxHeader, RxData) !=
-        HAL_OK) {
-        debug_uart.SendData("init car state error!\r\n");
-        while (true);
-    }
-    if(RxHeader.ExtId == battery_msgID)
-    {
-        uint8_t *p = RxData;
-        this->motor_state.battery_votage = *(uint16_t *)p;
-    }
-    else
-    {
-        debug_uart.SendData("read car power error!\r\n");
-    }
+    if (HAL_OK == this->check_battery()) {
+        return HAL_OK;
+    } else
+        return HAL_ERROR;
 }
 
 uint32_t Motor::show_battery() {
     return this->motor_state.battery_votage;
 }
+
+uint16_t *Motor::show_speed() {
+    return this->motor_state.FL_speed;
+}
+
+
+

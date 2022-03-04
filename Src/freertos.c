@@ -47,14 +47,18 @@
 /* USER CODE BEGIN Variables */
 
 /* USER CODE END Variables */
-osThreadId defaultTaskHandle;
+osThreadId rosPubTaskHandle;
+osThreadId CanProcessTaskHandle;
+osThreadId rosSubTaskHandle;
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
 
 /* USER CODE END FunctionPrototypes */
 
-void StartDefaultTask(void const * argument);
+void rosPubCallbk(void const * argument);
+void CanProcessTCallbk(void const * argument);
+void rosSubCallbk(void const * argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -134,9 +138,17 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE END RTOS_QUEUES */
 
   /* Create the thread(s) */
-  /* definition and creation of defaultTask */
-  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 128);
-  defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
+  /* definition and creation of rosPubTask */
+  osThreadDef(rosPubTask, rosPubCallbk, osPriorityBelowNormal, 0, 128);
+  rosPubTaskHandle = osThreadCreate(osThread(rosPubTask), NULL);
+
+  /* definition and creation of CanProcessTask */
+  osThreadDef(CanProcessTask, CanProcessTCallbk, osPriorityNormal, 0, 256);
+  CanProcessTaskHandle = osThreadCreate(osThread(CanProcessTask), NULL);
+
+  /* definition and creation of rosSubTask */
+  osThreadDef(rosSubTask, rosSubCallbk, osPriorityNormal, 0, 128);
+  rosSubTaskHandle = osThreadCreate(osThread(rosSubTask), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -144,23 +156,58 @@ void MX_FREERTOS_Init(void) {
 
 }
 
-/* USER CODE BEGIN Header_StartDefaultTask */
+/* USER CODE BEGIN Header_rosPubCallbk */
 /**
-  * @brief  Function implementing the defaultTask thread.
+  * @brief  Function implementing the rosPubTask thread.
   * @param  argument: Not used
   * @retval None
   */
-/* USER CODE END Header_StartDefaultTask */
-void StartDefaultTask(void const * argument)
+/* USER CODE END Header_rosPubCallbk */
+__weak void rosPubCallbk(void const * argument)
 {
-  /* USER CODE BEGIN StartDefaultTask */
+  /* USER CODE BEGIN rosPubCallbk */
   /* Infinite loop */
   for(;;)
   {
-      HAL_GPIO_TogglePin(LED0_GPIO_Port,LED0_Pin);
-      vTaskDelay(1000);
+    osDelay(1);
   }
-  /* USER CODE END StartDefaultTask */
+  /* USER CODE END rosPubCallbk */
+}
+
+/* USER CODE BEGIN Header_CanProcessTCallbk */
+/**
+* @brief Function implementing the CanProcessTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_CanProcessTCallbk */
+__weak void CanProcessTCallbk(void const * argument)
+{
+  /* USER CODE BEGIN CanProcessTCallbk */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END CanProcessTCallbk */
+}
+
+/* USER CODE BEGIN Header_rosSubCallbk */
+/**
+* @brief Function implementing the rosSubTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_rosSubCallbk */
+__weak void rosSubCallbk(void const * argument)
+{
+  /* USER CODE BEGIN rosSubCallbk */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END rosSubCallbk */
 }
 
 /* Private application code --------------------------------------------------*/

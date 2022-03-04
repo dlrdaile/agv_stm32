@@ -6,75 +6,55 @@
 * @description: 
 ********************************************************************************/
 #include "Can.h"
-//#include "startup.h"
-#include "Usart.h"
+#include "UserConfig.h"
 
-extern Usart debug_uart;
+#if JLINK_DEBUG == 1
 
-Can::Can(CAN_HandleTypeDef *hcan, CAN_FilterTypeDef *canFilter) {
-    this->hcan = hcan;
-    this->canFilter = canFilter;
+#include "SEGGER_RTT.h"
+
+#endif
+
+Can::Can(CAN_HandleTypeDef &hcan) {
+    this->hcan = &hcan;
+}
+
+HAL_StatusTypeDef Can::CAN_Init(CAN_FilterTypeDef *canFilter, uint16_t filtersize) {
+    HAL_StatusTypeDef result;
     if (canFilter == NULL) {
-        this->canFilter = new CAN_FilterTypeDef;
-        this->canFilter->FilterBank = 0;
-        this->canFilter->FilterMode = CAN_FILTERMODE_IDMASK;
-        this->canFilter->FilterScale = CAN_FILTERSCALE_32BIT;
-
-        this->canFilter->FilterIdHigh = 0;
-        this->canFilter->FilterIdLow = 0; //后四位是1100=0xC
-//    this->canFilter->FilterMaskIdHigh = 0xF800;
-//    thi->scanFilter->FilterMaskIdLow = 0x000E;
-        this->canFilter->FilterMaskIdHigh = 0;
-        this->canFilter->FilterMaskIdLow = 0;
-
-        this->canFilter->FilterFIFOAssignment = CAN_RX_FIFO0;
-        this->canFilter->FilterActivation = ENABLE;
-        this->canFilter->SlaveStartFilterBank = 14;
+        CAN_FilterTypeDef canFilter;
+        canFilter.FilterBank = 0;
+        canFilter.FilterMode = CAN_FILTERMODE_IDMASK;
+        canFilter.FilterScale = CAN_FILTERSCALE_32BIT;
+        canFilter.FilterIdHigh = 0;
+        canFilter.FilterIdLow = 0; //后四位是1100=0xC
+        canFilter.FilterMaskIdHigh = 0;
+        canFilter.FilterMaskIdLow = 0;
+        canFilter.FilterFIFOAssignment = CAN_RX_FIFO0;
+        canFilter.FilterActivation = ENABLE;
+        canFilter.SlaveStartFilterBank = 14;
+        result = HAL_CAN_ConfigFilter(this->hcan, &canFilter);
+        if (HAL_OK != result) {
+            return result;
+        }
     } else {
-        this->canFilter = new CAN_FilterTypeDef;
-        this->canFilter->FilterBank = canFilter->FilterBank;
-        this->canFilter->FilterMode = canFilter->FilterMode;
-        this->canFilter->FilterScale = canFilter->FilterScale;
-
-        this->canFilter->FilterIdHigh = canFilter->FilterIdHigh;
-        this->canFilter->FilterIdLow = canFilter->FilterIdLow; //后四位是1100=0xC
-//    thiscanFilter.FilterMaskIdHigh = 0xF800;
-//    thiscanFilter.FilterMaskIdLow = 0x000E;
-        this->canFilter->FilterMaskIdHigh = canFilter->FilterMaskIdHigh;
-        this->canFilter->FilterMaskIdLow = canFilter->FilterMaskIdLow;
-
-        this->canFilter->FilterFIFOAssignment = canFilter->FilterFIFOAssignment;
-        this->canFilter->FilterActivation = canFilter->FilterActivation;
-        this->canFilter->SlaveStartFilterBank = canFilter->SlaveStartFilterBank;
+        for (int i = 0; i < filtersize; ++i) {
+            result = HAL_CAN_ConfigFilter(this->hcan, canFilter + i);
+            if (HAL_OK != result) {
+                return result;
+            }
+        }
     }
-}
-
-Can::~Can() {
-    if (this->canFilter != NULL) {
-        delete this->canFilter;
-        this->canFilter = NULL;
-    }
-}
-
-HAL_StatusTypeDef Can::CAN_Init() {
-    HAL_StatusTypeDef result = HAL_CAN_ConfigFilter(this->hcan, this->canFilter);
-    if(result != HAL_OK) {
-        return result;
-    }
-    debug_uart.SendData("ID Filter has been set\n");
     result = HAL_CAN_Start(this->hcan);
-    if(result != HAL_OK) {
+    if (result != HAL_OK) {
         return result;
     }
-    debug_uart.SendData("CAN is started\n");
-    if(this->canFilter->FilterFIFOAssignment == CAN_RX_FIFO0)
-        __HAL_CAN_ENABLE_IT(this->hcan, CAN_IT_RX_FIFO0_MSG_PENDING);
-    else
-        __HAL_CAN_ENABLE_IT(this->hcan, CAN_IT_RX_FIFO1_MSG_PENDING);
+    SEGGER_RTT_printf(0, "CAN is started\n");
+/*    __HAL_CAN_ENABLE_IT(this->hcan, CAN_IT_RX_FIFO0_MSG_PENDING);
+    __HAL_CAN_ENABLE_IT(this->hcan, CAN_IT_RX_FIFO1_MSG_PENDING);*/
     return result;
 }
 
-void Can::CAN_SendMsg(uint32_t ExtID, uint8_t *TxData, uint8_t Data_Len) {
+CanStatusTypeDef Can::CAN_SendMsg(const uint32_t &ExtID, uint8_t *TxData, const uint8_t &Data_Len) {
     CAN_TxHeaderTypeDef TxHeader;
     TxHeader.ExtId = ExtID;
     TxHeader.StdId = 0;
@@ -84,23 +64,64 @@ void Can::CAN_SendMsg(uint32_t ExtID, uint8_t *TxData, uint8_t Data_Len) {
     TxHeader.TransmitGlobalTime = DISABLE;
     while (HAL_CAN_GetTxMailboxesFreeLevel(this->hcan) < 1) {
     }
-    debug_uart.SendData("Send MsgID = 0x%08x\n", TxHeader.ExtId);
     uint32_t TxMailbox;
     if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox) != HAL_OK) {
-        debug_uart.SendData("Send to mailbox error!\n");
-    }
+        SEGGER_RTT_printf(0, "Send to mailbox error!\n");
+        return CAN_ADD_MESSAGE_ERROR;
+    } else
+        return CAN_OK;
 }
 
-void Can::CAN_ReadMsg() {
+CanStatusTypeDef Can::CAN_ReadMsg(const uint32_t &EXTID, uint8_t *Rxdata) {
     CAN_RxHeaderTypeDef RxHeader;
-    if (HAL_CAN_GetRxMessage(this->hcan, this->canFilter->FilterFIFOAssignment, &RxHeader, this->Rx_CMD_BUFFER) !=
-        HAL_OK) {
-        Rx_CMD_BUFFER[RxHeader.DLC] = '\0';
-        string temp = (char *) Rx_CMD_BUFFER;
-        this->RxBUFFER.push(temp);
-    } else {
-        debug_uart.SendData("receive data error!\n");
+    if (HAL_CAN_GetRxFifoFillLevel(this->hcan, CAN_RX_FIFO0) == 0) {
+        return CAN_NO_RECEIVE_ERROR;
     }
+    if(HAL_CAN_GetRxMessage(this->hcan,CAN_RX_FIFO0,&RxHeader,Rxdata) != HAL_OK)
+    {
+        return CAN_GET_MESSAGE_ERROR;
+    }
+    if(EXTID != RxHeader.ExtId)
+    {
+        return CAN_RECEIVE_ERROR;
+    }
+    return CAN_OK;
 }
+
+/*void Can::CAN_ReadMsg_IT(uint32_t RxFifo) {
+    
+    string temp;
+    CAN_RxHeaderTypeDef RxHeader;
+    if (HAL_CAN_GetRxMessage(this->hcan, RxFifo, &RxHeader, this->Rx_CMD_BUFFER) == HAL_OK) {
+        if (RxFifo == CAN_RX_FIFO0) {
+            temp = "FIFO0";
+        } else {
+            temp = "FIFO1";
+        }
+        SEGGER_RTT_printf(0, "%s has receive the data\n", temp.c_str());
+        SEGGER_RTT_printf(0, "StdID = 0x%04x\n", RxHeader.StdId);
+        SEGGER_RTT_printf(0, "ExtID = 0x%08x\n", RxHeader.ExtId);
+        SEGGER_RTT_printf(0, "RTR(0=Data,2=Remote) = %d\n", RxHeader.RTR);
+        SEGGER_RTT_printf(0, "IDE(0=Std,4=Ext) = %d\n", RxHeader.IDE);
+        if (RxHeader.RTR != 2) {
+            for (int i = 0; i < RxHeader.DLC; ++i) {
+                if (i == 0) {
+                    SEGGER_RTT_printf(0, "DLC = %d\n", RxHeader.DLC);
+                    SEGGER_RTT_printf(0, "the received data is :0x");
+                }
+                SEGGER_RTT_printf(0, "%x", this->Rx_CMD_BUFFER[i]);
+                if(i == (RxHeader.DLC - 1))
+                {
+                    SEGGER_RTT_printf(0, "\n");
+                }
+            }
+        }
+        temp.assign(20,'-');
+        SEGGER_RTT_printf(0, "%S\n",temp.c_str());
+    } else {
+        SEGGER_RTT_printf(0, "%s receive data error!\n", temp.c_str());
+    }
+}*/
+
 
 
