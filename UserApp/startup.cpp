@@ -11,8 +11,9 @@
 #include "Can.h"
 #include "Motor.h"
 #include "ros.h"
-#include "main.h"
+#include "communicate_with_stm32/MotorData.h"
 #include "communicate_with_stm32/MotorCmd.h"
+#include "main.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #if JLINK_DEBUG == 1
@@ -28,20 +29,32 @@ Led hled1(LED1_GPIO_Port, LED1_Pin);
 volatile unsigned long  long run_time_stats_tick;
 #endif
 Motor motor(hcan1);
+ros::NodeHandle nh;
+//std_msgs::String str_msg;
+communicate_with_stm32::MotorCmd motorcmd;
+ros::Publisher chatter("chatter",&motorcmd);
+char hello[] = "Hello world!";
+
+void test_cb(const communicate_with_stm32::MotorData& msg);
+
+ros::Subscriber<communicate_with_stm32::MotorData> test_sub("stm32_test",&test_cb);
+
 void startup() {
-//    ros::NodeHandle nh;
     SEGGER_RTT_Init();
-    if(motor.InitState() != HAL_OK)
-    {
-        SEGGER_RTT_printf(0,"motor init error!please check the error\n");
-        while (1);
-    }
-    SEGGER_RTT_printf(0,"hello world\n");
-    motor.check_oneMs_encoder();
+    nh.initNode();
+    nh.advertise(chatter);
+    nh.subscribe(test_sub);
     while (1){
         hled1.Toggle();
+        motorcmd.cmd = "move";
+        motorcmd.isUrgent = true;
+        for (int i = 0; i < 4; ++i) {
+            motorcmd.data[i] = HAL_GetTick();
+        }
+        chatter.publish(&motorcmd);
+        nh.spinOnce();
 //        motor.setSpeed(0x03E8,0X03E8,0,0);
-        HAL_Delay(1000);
+        HAL_Delay(100);
     }
 /*    uint8_t temp[8];
     SEGGER_RTT_Init();
@@ -71,6 +84,25 @@ void startup() {
         hled1.Toggle();
         HAL_Delay(1000);
     }*/
+}
+
+void test_cb(const communicate_with_stm32::MotorData& msg){
+    SEGGER_RTT_printf(0,"receive sub data:\n");
+    SEGGER_RTT_printf(0,"the battery is 0x%08x\n",msg.battery);
+    for (int i = 0; i < 4; ++i) {
+        SEGGER_RTT_printf(0,"the %d encoder is %08x\n",i,msg.encoder[i]);
+        SEGGER_RTT_printf(0,"the %d speed is %04x\n",i,msg.setted_speed[i]);
+    }
+    SEGGER_RTT_printf(0,"----------------------------\n\n");
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    nh.getHardware()->reset_rbuf();
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart){
+    nh.getHardware()->flush();
 }
 
 
