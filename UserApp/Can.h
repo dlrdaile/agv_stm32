@@ -23,13 +23,35 @@ typedef enum {
 
 class Can {
 public:
+    /**
+     * @brief Can类构造
+     * @param hcan cubemx生成的hcan
+     */
     Can(CAN_HandleTypeDef &hcan);
+    /**
+     * @brief 对can进行初始化，包括设置过滤器和使能器工作
+     * @param canFilter 过滤器数组，默认无过滤
+     * @param filtersize 过滤器的数量，默认为0
+     * @return 初始化状态
+     */
     HAL_StatusTypeDef CAN_Init(CAN_FilterTypeDef *canFilter = NULL,uint16_t filtersize = 0);
+    /**
+     * @brief Can发送数据
+     * @param ExtID 发送的ID,任务原因，默认都是扩展ID
+     * @param TxData 发送数据的数组
+     * @param Data_Len 发送的字节数
+     * @return 发送状态
+     */
     CanStatusTypeDef CAN_SendMsg(const uint32_t &ExtID,uint8_t *TxData,const uint8_t &Data_Len=0);
+    /**
+     * @brief 轮询读取接受到的数据
+     * @param ExtID 刚刚发送数据的EXTid
+     * @param Rxdata 用以接收数据的数组
+     * @return 接收状态
+     */
     CanStatusTypeDef CAN_ReadMsg (const uint32_t &ExtID,uint8_t *Rxdata);
-//    void CAN_ReadMsg_IT (uint32_t RxFifo);
 public:
     CAN_HandleTypeDef *hcan;
-//    uint8_t Rx_CMD_BUFFER[8];
+    uint32_t TxMailbox;
 };
 #endif //PROJECT_CAR_CAN_H

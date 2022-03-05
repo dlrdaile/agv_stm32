@@ -5,20 +5,35 @@
  * @version: 1.0
  * @description:
  ********************************************************************************/
+ //STM32的库函数
+#include "main.h"
+
+//C++官方库
+#include "string"
+#include "cstdio"
+//自定义的库函数
 #include "startup.h"
 #include "Key.h"
 #include "Led.h"
 #include "Can.h"
 #include "Motor.h"
+
+//ros库函数
 #include "ros.h"
 #include "communicate_with_stm32/MotorData.h"
 #include "communicate_with_stm32/MotorCmd.h"
-#include "main.h"
+
+//Freertos的库函数
 #include "FreeRTOS.h"
 #include "task.h"
+#include "queue.h"
+
+//Jlink调试打印的函数库
 #if JLINK_DEBUG == 1
 #include "SEGGER_RTT.h"
 #endif
+
+//用户变量初始化区
 Key hsw2(SW2_GPIO_Port, SW2_Pin);
 Key hsw3(SW3_GPIO_Port, SW3_Pin);
 
@@ -26,85 +41,29 @@ Led hled0(LED0_GPIO_Port, LED0_Pin);
 Led hled1(LED1_GPIO_Port, LED1_Pin);
 
 #if (configGENERATE_RUN_TIME_STATS == 1) && (JLINK_DEBUG == 1)
-volatile unsigned long  long run_time_stats_tick;
+volatile unsigned long long run_time_stats_tick;
 #endif
+
 Motor motor(hcan1);
 ros::NodeHandle nh;
-//std_msgs::String str_msg;
-communicate_with_stm32::MotorCmd motorcmd;
-ros::Publisher chatter("chatter",&motorcmd);
-char hello[] = "Hello world!";
 
-void test_cb(const communicate_with_stm32::MotorData& msg);
-
-ros::Subscriber<communicate_with_stm32::MotorData> test_sub("stm32_test",&test_cb);
+xQueueHandle canSendQueue;
+xQueueHandle canParseQueue;
+xQueueHandle canUrgentQueue;
 
 void startup() {
-    SEGGER_RTT_Init();
     nh.initNode();
-    nh.advertise(chatter);
-    nh.subscribe(test_sub);
-    while (1){
-        hled1.Toggle();
-        motorcmd.cmd = "move";
-        motorcmd.isUrgent = true;
-        for (int i = 0; i < 4; ++i) {
-            motorcmd.data[i] = HAL_GetTick();
-        }
-        chatter.publish(&motorcmd);
-        nh.spinOnce();
-//        motor.setSpeed(0x03E8,0X03E8,0,0);
-        HAL_Delay(100);
-    }
-/*    uint8_t temp[8];
     SEGGER_RTT_Init();
-    SEGGER_RTT_printf(0,"hello world!\n");
-    if(HAL_OK != motor_can.CAN_Init())
-    {
-        SEGGER_RTT_printf(0,"can init error!\n");
-        while (1);
-    }
-    temp[0] = (uint8_t)(0xAABBCCDD);
-    motor_can.CAN_SendMsg(Generate_msgID(42,0),temp,4);
-    uint32_t rand;
-    while (1)
-    {
-        HAL_RNG_GenerateRandomNumber(&hrng,&rand);
-        temp[3] = rand & 0x000000FF;
-        temp[2] = (rand & 0x0000FF00)>>8;
-        temp[1] = (rand & 0x00FF0000)>>16;
-        temp[0] = (rand & 0xFF000000)>>24;
-        for (int i = 0; i < 4; ++i) {
-            if(i == 0)
-            SEGGER_RTT_printf(0,"the sending data is :0x:");
-            SEGGER_RTT_printf(0,"%x",temp[i]);
-        }
-        SEGGER_RTT_printf(0,"\n");
-        motor_can.CAN_SendMsg(Generate_msgID(temp[0],temp[1]),temp,4);
-        hled1.Toggle();
-        HAL_Delay(1000);
-    }*/
+    while (1);
 }
 
-void test_cb(const communicate_with_stm32::MotorData& msg){
-    SEGGER_RTT_printf(0,"receive sub data:\n");
-    SEGGER_RTT_printf(0,"the battery is 0x%08x\n",msg.battery);
-    for (int i = 0; i < 4; ++i) {
-        SEGGER_RTT_printf(0,"the %d encoder is %08x\n",i,msg.encoder[i]);
-        SEGGER_RTT_printf(0,"the %d speed is %04x\n",i,msg.setted_speed[i]);
-    }
-    SEGGER_RTT_printf(0,"----------------------------\n\n");
-}
-
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
-{
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
     nh.getHardware()->reset_rbuf();
 }
 
-void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart){
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
     nh.getHardware()->flush();
 }
-
 
 
 void timely_detect(TIM_HandleTypeDef *htim) {
@@ -133,26 +92,73 @@ void timely_detect(TIM_HandleTypeDef *htim) {
     }
 }*/
 
+HAL_StatusTypeDef create_Queue() {
+    canSendQueue = xQueueCreate(3, sizeof(communicate_with_stm32::MotorCmd));
+    canUrgentQueue = xQueueCreate(3, sizeof(communicate_with_stm32::MotorCmd));
+    canParseQueue = xQueueCreate(3, sizeof(CarState_TypeDef));
+    if (canUrgentQueue != NULL && canSendQueue != NULL && canParseQueue != NULL) {
+        return HAL_OK;
+    }
+    return HAL_ERROR;
+}
+
 //对c的weak函数进行重写
 extern "C" {
-void rosPubCallbk(void const * argument)
-{
 
+
+void rosPubCallbk(void const *argument) {
+    while (true) {
+
+    }
 }
 
-void CanProcessTCallbk(void const * argument){
+void CanProcessTCallbk(void const *argument) {
+    while (true) {
 
+    }
 }
 
-void rosSubCallbk(void const * argument){
+void rosSubCallbk(void const *argument) {
+    while (true) {
 
+    }
+}
+
+void CanUrgentCallbk(void const *argument) {
+    communicate_with_stm32::MotorCmd urgentcmd;
+    while (true) {
+        xQueueReceive(canUrgentQueue, &urgentcmd, portMAX_DELAY);
+        HAL_CAN_AbortTxRequest(motor.mCan->hcan, motor.mCan->TxMailbox);
+        switch (urgentcmd.cmd) {
+            case cmd_Stop:
+                while(HAL_OK!=motor.stop()){
+                    nh.logfatal("motor stop error!");
+                    HAL_Delay(500);
+                }
+                break;
+            case cmd_sysReset:
+                while (HAL_OK !=motor.motion_system_reset())
+                {
+                    nh.logfatal("motor system reset error!");
+                    HAL_Delay(500);
+                }
+            default:
+                if(HAL_OK!=motor.run_cmd(urgentcmd.cmd))
+                {
+                    char temp[50];
+                    sprintf(temp,"the urgent cmd:%d is error!",urgentcmd.cmd);
+                    nh.logwarn(temp);
+                }
+                break;
+        }
+    }
 }
 
 #if (configGENERATE_RUN_TIME_STATS == 1) && (JLINK_DEBUG == 1)
 void configureTimerForRunTimeStats(void) {
     run_time_stats_tick = 0;
 }
-unsigned long getRunTimeCounterValue(void){
+unsigned long getRunTimeCounterValue(void) {
     return run_time_stats_tick;
 }
 #endif

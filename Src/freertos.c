@@ -25,7 +25,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "startup.h"
+#include "SEGGER_RTT.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -50,6 +51,7 @@
 osThreadId rosPubTaskHandle;
 osThreadId CanProcessTaskHandle;
 osThreadId rosSubTaskHandle;
+osThreadId CanUrgentTaskHandle;
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
@@ -59,6 +61,7 @@ osThreadId rosSubTaskHandle;
 void rosPubCallbk(void const * argument);
 void CanProcessTCallbk(void const * argument);
 void rosSubCallbk(void const * argument);
+void CanUrgentCallbk(void const * argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -135,6 +138,11 @@ void MX_FREERTOS_Init(void) {
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
+  if(create_Queue() != HAL_OK)
+  {
+      SEGGER_RTT_printf(0,"queue create error!\n");
+      while (1);
+  }
   /* USER CODE END RTOS_QUEUES */
 
   /* Create the thread(s) */
@@ -149,6 +157,10 @@ void MX_FREERTOS_Init(void) {
   /* definition and creation of rosSubTask */
   osThreadDef(rosSubTask, rosSubCallbk, osPriorityNormal, 0, 128);
   rosSubTaskHandle = osThreadCreate(osThread(rosSubTask), NULL);
+
+  /* definition and creation of CanUrgentTask */
+  osThreadDef(CanUrgentTask, CanUrgentCallbk, osPriorityRealtime, 0, 128);
+  CanUrgentTaskHandle = osThreadCreate(osThread(CanUrgentTask), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -208,6 +220,24 @@ __weak void rosSubCallbk(void const * argument)
     osDelay(1);
   }
   /* USER CODE END rosSubCallbk */
+}
+
+/* USER CODE BEGIN Header_CanUrgentCallbk */
+/**
+* @brief Function implementing the CanUrgentTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_CanUrgentCallbk */
+__weak void CanUrgentCallbk(void const * argument)
+{
+  /* USER CODE BEGIN CanUrgentCallbk */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END CanUrgentCallbk */
 }
 
 /* Private application code --------------------------------------------------*/

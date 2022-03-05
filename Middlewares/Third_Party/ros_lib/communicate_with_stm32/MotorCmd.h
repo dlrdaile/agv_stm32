@@ -12,14 +12,14 @@ namespace communicate_with_stm32
   class MotorCmd : public ros::Msg
   {
     public:
-      typedef const char* _cmd_type;
+      typedef uint8_t _cmd_type;
       _cmd_type cmd;
       typedef bool _isUrgent_type;
       _isUrgent_type isUrgent;
       uint16_t data[4];
 
     MotorCmd():
-      cmd(""),
+      cmd(0),
       isUrgent(0),
       data()
     {
@@ -28,11 +28,8 @@ namespace communicate_with_stm32
     virtual int serialize(unsigned char *outbuffer) const override
     {
       int offset = 0;
-      uint32_t length_cmd = strlen(this->cmd);
-      varToArr(outbuffer + offset, length_cmd);
-      offset += 4;
-      memcpy(outbuffer + offset, this->cmd, length_cmd);
-      offset += length_cmd;
+      *(outbuffer + offset + 0) = (this->cmd >> (8 * 0)) & 0xFF;
+      offset += sizeof(this->cmd);
       union {
         bool real;
         uint8_t base;
@@ -51,15 +48,8 @@ namespace communicate_with_stm32
     virtual int deserialize(unsigned char *inbuffer) override
     {
       int offset = 0;
-      uint32_t length_cmd;
-      arrToVar(length_cmd, (inbuffer + offset));
-      offset += 4;
-      for(unsigned int k= offset; k< offset+length_cmd; ++k){
-          inbuffer[k-1]=inbuffer[k];
-      }
-      inbuffer[offset+length_cmd-1]=0;
-      this->cmd = (char *)(inbuffer + offset-1);
-      offset += length_cmd;
+      this->cmd =  ((uint8_t) (*(inbuffer + offset)));
+      offset += sizeof(this->cmd);
       union {
         bool real;
         uint8_t base;
@@ -77,7 +67,7 @@ namespace communicate_with_stm32
     }
 
     virtual const char * getType() override { return "communicate_with_stm32/MotorCmd"; };
-    virtual const char * getMD5() override { return "284e19fddc4df7b8d406be945dc9b9eb"; };
+    virtual const char * getMD5() override { return "46990b6be74dc03c09757853bb458229"; };
 
   };
 
