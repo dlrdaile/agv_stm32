@@ -10,9 +10,9 @@
 #include "Led.h"
 #include "Can.h"
 #include "Motor.h"
-
+#include "ros.h"
 #include "main.h"
-
+#include "communicate_with_stm32/MotorCmd.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #if JLINK_DEBUG == 1
@@ -29,10 +29,19 @@ volatile unsigned long  long run_time_stats_tick;
 #endif
 Motor motor(hcan1);
 void startup() {
+//    ros::NodeHandle nh;
+    SEGGER_RTT_Init();
     if(motor.InitState() != HAL_OK)
     {
         SEGGER_RTT_printf(0,"motor init error!please check the error\n");
         while (1);
+    }
+    SEGGER_RTT_printf(0,"hello world\n");
+    motor.check_oneMs_encoder();
+    while (1){
+        hled1.Toggle();
+//        motor.setSpeed(0x03E8,0X03E8,0,0);
+        HAL_Delay(1000);
     }
 /*    uint8_t temp[8];
     SEGGER_RTT_Init();
@@ -106,6 +115,15 @@ void CanProcessTCallbk(void const * argument){
 void rosSubCallbk(void const * argument){
 
 }
+
+#if (configGENERATE_RUN_TIME_STATS == 1) && (JLINK_DEBUG == 1)
+void configureTimerForRunTimeStats(void) {
+    run_time_stats_tick = 0;
+}
+unsigned long getRunTimeCounterValue(void){
+    return run_time_stats_tick;
+}
+#endif
 /*void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
     if (hcan->Instance == CAN1) {
         motor_can.CAN_ReadMsg_IT(CAN_RX_FIFO0);
@@ -118,16 +136,7 @@ void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan) {
 }*/
 }
 
-#if (configGENERATE_RUN_TIME_STATS == 1) && (JLINK_DEBUG == 1)
-extern "C" {
-void configureTimerForRunTimeStats(void) {
-    run_time_stats_tick = 0;
-}
-unsigned long getRunTimeCounterValue(void){
-    return run_time_stats_tick;
-}
-}
-#endif
+
 
 
 

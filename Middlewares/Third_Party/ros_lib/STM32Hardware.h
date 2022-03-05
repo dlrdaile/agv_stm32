@@ -41,8 +41,6 @@
 #include "stm32f3xx_hal_uart.h"
 #endif /* STM32F3xx */
 #ifdef STM32F4xx
-
-#include <cstring>
 #include "stm32f4xx_hal.h"
 #include "stm32f4xx_hal_uart.h"
 #endif /* STM32F4xx */
