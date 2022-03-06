@@ -12,6 +12,8 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "string"
+#include "communicate_with_stm32/MotorData.h"
+#include "communicate_with_stm32/MotorControl.h"
 
 enum {
     FL_motor = 0,
@@ -31,6 +33,7 @@ typedef struct {
     int8_t oneMs_encoder[4];
     EncoderData_TypeDef current_encData;
     EncoderData_TypeDef last_encData;
+    communicate_with_stm32::MotorData motorData;
 } CarState_TypeDef;
 
 typedef enum {
@@ -43,13 +46,23 @@ typedef enum {
     cmd_clearEncoder,
     cmd_xyMotion,
     cmd_swerveMotion,
-    cmd_rotateMotion,
-    cmd_checkAveSpeed,
+    cmd_rotateMotion = 9,
+
+} topic_cmd_set;
+
+typedef enum {
+    cmd_checkAveSpeed = 10,
     cmd_checkInsSpeed,
     cmd_checkEncoderData,
-    cmd_checkOneMsEncoder
-} cmd_set;
+    cmd_checkOneMsEncoder,
+    cmd_checkbattery,
+    cmd_startupBattery,
+    cmd_startupEncoder
+} server_cmd_set;
+
+
 const char *select_name(uint8_t &cmd);
+
 const uint32_t sysReset_msgID = Generate_msgID(0x19, 0);
 const uint32_t mvDirection_msgID = Generate_msgID(0x2A, 0);
 const uint32_t battery_msgID = Generate_msgID(0x33, 0);
@@ -60,7 +73,7 @@ const uint32_t ClearEncoder_msgID = Generate_msgID(0x32, 0);
 
 class Motor {
 public:
-    Motor(CAN_HandleTypeDef &hcan);
+    Motor(CAN_HandleTypeDef &hcan, bool IsCheckEncoder = true, bool IsCheckBattery = true);
 
     ~Motor();
 
@@ -131,7 +144,10 @@ public:
      */
     HAL_StatusTypeDef InitState();
 
-    HAL_StatusTypeDef run_cmd(const uint8_t &cmd, uint16_t *TxData = NULL);
+    HAL_StatusTypeDef topic_cmd(const uint8_t &cmd, uint16_t *TxData = NULL);
+
+    HAL_StatusTypeDef server_cmd(const communicate_with_stm32::MotorControl::Request &req,
+                                 communicate_with_stm32::MotorControl::Response &res);
 
 private:
 
@@ -141,6 +157,8 @@ public:
     CarState_TypeDef motor_state;
     uint8_t CanRxBuffer[16];
     Can *mCan;
+    bool encoderCheckFlag;
+    bool batteryCheckFlag;
 private:
     CanStatusTypeDef result;
 };

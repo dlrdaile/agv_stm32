@@ -6,6 +6,11 @@
 * @description: 
 ********************************************************************************/
 #include "Key.h"
+#include "FreeRTOS.h"
+#include "timers.h"
+
+extern TimerHandle_t sw2TimerHandle;
+extern TimerHandle_t sw3TimerHandle;
 
 Key::~Key() {
 
@@ -35,6 +40,14 @@ void Key::Key_timely_detect() {
         case KEY_RELEASE:
             if (HAL_GPIO_ReadPin(this->GPIO_Port, this->GPIO_Pin) == this->OffState) {
                 this->KeyState = KEY_CHECK;
+                if(this->GPIO_Pin == SW2_Pin)
+                {
+                    xTimerStop(sw2TimerHandle,10);
+                }
+                else if(this->GPIO_Pin == SW3_Pin)
+                {
+                    xTimerStop(sw3TimerHandle,10);
+                }
             }
             break;
         default:

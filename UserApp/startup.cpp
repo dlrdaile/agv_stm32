@@ -79,6 +79,10 @@ extern TaskHandle_t CanNormalTaskHandle;
 extern TaskHandle_t CanUrgentTaskHandle;
 extern TaskHandle_t feedDogTaskHandle;
 extern EventGroupHandle_t feedDogEvent;
+extern TimerHandle_t encoderTimerHandle;
+extern TimerHandle_t batteryTimerHandle;
+extern TimerHandle_t sw2TimerHandle;
+extern TimerHandle_t sw3TimerHandle;
 
 void startup() {
     nh.initNode();
@@ -102,6 +106,18 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
     nh.getHardware()->flush();
 }
 
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
+    BaseType_t xHighPriorityTaskWoken;
+    if(GPIO_Pin == SW2_Pin)
+    {
+        xTimerStartFromISR(sw2TimerHandle,&xHighPriorityTaskWoken);
+    }
+    if(GPIO_Pin == SW3_Pin)
+    {
+        xTimerStartFromISR(sw3TimerHandle,&xHighPriorityTaskWoken);
+    }
+    portYIELD_FROM_ISR(xHighPriorityTaskWoken);
+}
 
 void timely_detect(TIM_HandleTypeDef *htim) {
 #if (configGENERATE_RUN_TIME_STATS == 1) && (JLINK_DEBUG == 1)
@@ -130,8 +146,8 @@ void timely_detect(TIM_HandleTypeDef *htim) {
 }*/
 
 HAL_StatusTypeDef create_Queue() {
-    canSendQueue = xQueueCreate(5, sizeof(communicate_with_stm32::MotorCmd));
-    canUrgentQueue = xQueueCreate(3, sizeof(communicate_with_stm32::MotorCmd));
+    canSendQueue = xQueueCreate(10, sizeof(communicate_with_stm32::MotorCmd));
+    canUrgentQueue = xQueueCreate(10, sizeof(communicate_with_stm32::MotorCmd));
     if (canUrgentQueue != NULL && canSendQueue != NULL) {
         return HAL_OK;
     }
@@ -146,23 +162,25 @@ void rosCallback(void const *argument) {
     while (true) {
         nh.spinOnce();
         xEventGroupSetBits(feedDogEvent, rosEvent);
+//        xTaskNotify(feedDogTaskHandle,rosEvent,eSetBits);
         vTaskDelay(50);
     }
 }
 
 void CanNormalTCallbk(void const *argument) {
-    communicate_with_stm32::MotorCmd normalcmd;
+    communicate_with_stm32::MotorCmd normal;
     while (true) {
-        if (xQueueReceive(canUrgentQueue, &normalcmd, 100) == pdTRUE) {
+        if (xQueueReceive(canUrgentQueue, &normal, 100) == pdTRUE) {
             xSemaphoreTake(canMutex, portMAX_DELAY);
-            if (HAL_OK != motor.run_cmd(normalcmd.cmd, normalcmd.data)) {
+            if (HAL_OK != motor.topic_cmd(normal.cmd, normal.data)) {
                 char temp[100];
-                sprintf(temp, "the normal cmd:%s is error!", select_name(normalcmd.cmd));
+                sprintf(temp, "the normal cmd:%s is error!", select_name(normal.cmd));
                 nh.logwarn(temp);
             }
             xSemaphoreGive(canMutex);
         }
         xEventGroupSetBits(feedDogEvent, canNormalEvent);
+//        xTaskNotify(feedDogTaskHandle,canNormalEvent,eSetBits);
         vTaskDelay(50);
     }
 }
@@ -187,7 +205,7 @@ void CanUrgentCallbk(void const *argument) {
                         HAL_Delay(500);
                     }
                 default:
-                    if (HAL_OK != motor.run_cmd(urgentcmd.cmd)) {
+                    if (HAL_OK != motor.topic_cmd(urgentcmd.cmd)) {
                         char temp[50];
                         sprintf(temp, "the urgent cmd:%d is error!", urgentcmd.cmd);
                         nh.logwarn(temp);
@@ -197,6 +215,7 @@ void CanUrgentCallbk(void const *argument) {
             xSemaphoreGive(canMutex);
         }
         xEventGroupSetBits(feedDogEvent, canUrgentEvent);
+//        xTaskNotify(feedDogTaskHandle,canUrgentEvent,eSetBits);
         vTaskDelay(50);
     }
 }
@@ -204,6 +223,7 @@ void CanUrgentCallbk(void const *argument) {
 void feedDogCallbk(void const *argument) {
     HAL_IWDG_Refresh(&hiwdg);
     uint32_t eventSum = (1 << 3) - 1;
+    uint32_t uNotisfyValue;
     while (true) {
         if (pdTRUE == xEventGroupWaitBits(feedDogEvent,
                                           eventSum,
@@ -214,6 +234,32 @@ void feedDogCallbk(void const *argument) {
         else{
             nh.logwarn("the dog is going to dead!");
         }
+/*        xTaskNotifyWait(0x00,
+                        0xffffffff,
+                        &uNotisfyValue,
+                        3000);
+        if(uNotisfyValue == eventSum){
+            HAL_IWDG_Refresh(&hiwdg);
+        }*/
+        vTaskDelay(100);
+    }
+}
+
+void keyCheckCallbk(void const * argument){
+    while (true){
+        if(hsw2.ButtenFlag == BUTTEN_ON)
+        {
+            hled0.On();
+            hled1.Toggle();
+            hsw2.ButtenFlag = BUTTEN_OFF;
+        }
+        if(hsw3.ButtenFlag == BUTTEN_ON)
+        {
+            hled1.Toggle();
+            hled0.Off();
+            hsw3.ButtenFlag = BUTTEN_OFF;
+        }
+        vTaskDelay(100);
     }
 }
 #if (configGENERATE_RUN_TIME_STATS == 1) && (JLINK_DEBUG == 1)
@@ -224,6 +270,27 @@ unsigned long getRunTimeCounterValue(void) {
     return run_time_stats_tick;
 }
 #endif
+
+void encoderTimCallbk(void const * argument){
+    communicate_with_stm32::MotorCmd encoder_cmd;
+    encoder_cmd.cmd = cmd_updateEncoderData;
+    xQueueOverwrite(canSendQueue,&encoder_cmd);
+}
+
+void batteryTimCallbk(void const * argument){
+    communicate_with_stm32::MotorCmd battery_cmd;
+    battery_cmd.cmd = cmd_updateBattery;
+    xQueueOverwrite(canSendQueue,&battery_cmd);
+}
+
+void sw2TimCallbk(void const * argument){
+    hsw2.Key_timely_detect();
+}
+
+void sw3TimCallbk(void const * argument){
+    hsw3.Key_timely_detect();
+}
+
 }
 
 
@@ -252,12 +319,12 @@ void stm32TopicCtrl_cb(const communicate_with_stm32::MotorCmd &cmd) {
 
 void stm32ServerCtrl_cb(const communicate_with_stm32::MotorControl::Request &req,
                         communicate_with_stm32::MotorControl::Response &res) {
-    switch (req.cmd) {
-        case 1:
-            break;
-        default:
-            break;
+    if(motor.server_cmd(req,res) == HAL_OK)
+    {
+        res.success = true;
     }
+    else
+        res.success = false;
 }
 
 
