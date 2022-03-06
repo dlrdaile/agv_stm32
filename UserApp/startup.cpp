@@ -5,9 +5,9 @@
  * @version: 1.0
  * @description:
  ********************************************************************************/
- //STM32的库函数
+//STM32的库函数
 #include "main.h"
-
+#include "iwdg.h"
 //C++官方库
 #include "string"
 #include "cstdio"
@@ -22,39 +22,76 @@
 #include "ros.h"
 #include "communicate_with_stm32/MotorData.h"
 #include "communicate_with_stm32/MotorCmd.h"
-
+#include "communicate_with_stm32/MotorControl.h"
 //Freertos的库函数
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
+#include "semphr.h"
+#include "event_groups.h"
 
 //Jlink调试打印的函数库
 #if JLINK_DEBUG == 1
+
 #include "SEGGER_RTT.h"
+
 #endif
+
+enum {
+    rosEvent = 1,
+    canNormalEvent = 1 << 1,
+    canUrgentEvent = 1 << 2
+};
 
 //用户变量初始化区
 Key hsw2(SW2_GPIO_Port, SW2_Pin);
 Key hsw3(SW3_GPIO_Port, SW3_Pin);
 
-Led hled0(LED0_GPIO_Port, LED0_Pin);
+Led hled0(LED0_GPIO_Port, LED0_Pin, on_Low);
 Led hled1(LED1_GPIO_Port, LED1_Pin);
 
+Motor motor(hcan1);
+
+bool canSendFlag = false;
 #if (configGENERATE_RUN_TIME_STATS == 1) && (JLINK_DEBUG == 1)
 volatile unsigned long long run_time_stats_tick;
 #endif
 
-Motor motor(hcan1);
-ros::NodeHandle nh;
+void stm32TopicCtrl_cb(const communicate_with_stm32::MotorCmd &cmd);
 
-xQueueHandle canSendQueue;
-xQueueHandle canParseQueue;
-xQueueHandle canUrgentQueue;
+void stm32ServerCtrl_cb(const communicate_with_stm32::MotorControl::Request &req,
+                        communicate_with_stm32::MotorControl::Response &res);
+
+communicate_with_stm32::MotorData mStateData;
+
+ros::NodeHandle nh;
+ros::Publisher motorState("motorState", &mStateData);
+ros::Subscriber<communicate_with_stm32::MotorCmd> motorSub("stm32TopicCtrl", &stm32TopicCtrl_cb);
+
+ros::ServiceServer<communicate_with_stm32::MotorControl::Request,
+        communicate_with_stm32::MotorControl::Response> motorSrv("stm32SeverCtrl", &stm32ServerCtrl_cb);
+
+extern xQueueHandle canSendQueue;
+extern xQueueHandle canUrgentQueue;
+extern SemaphoreHandle_t canMutex;
+extern TaskHandle_t rosTaskHandle;
+extern TaskHandle_t CanNormalTaskHandle;
+extern TaskHandle_t CanUrgentTaskHandle;
+extern TaskHandle_t feedDogTaskHandle;
+extern EventGroupHandle_t feedDogEvent;
 
 void startup() {
     nh.initNode();
+    nh.advertise(motorState);
+    nh.subscribe(motorSub);
+    nh.advertiseService(motorSrv);
+#if JLINK_DEBUG == 1
     SEGGER_RTT_Init();
-    while (1);
+#endif
+    while (!nh.connected())
+    {
+        nh.spinOnce();
+    }
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
@@ -67,11 +104,11 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
 
 
 void timely_detect(TIM_HandleTypeDef *htim) {
-    if (htim->Instance == TIM6) {
 #if (configGENERATE_RUN_TIME_STATS == 1) && (JLINK_DEBUG == 1)
+    if (htim->Instance == TIM6) {
         run_time_stats_tick++;
-#endif
     }
+#endif
 }
 
 /*void on_UART_IDLE(UART_HandleTypeDef *huart) {
@@ -93,67 +130,92 @@ void timely_detect(TIM_HandleTypeDef *htim) {
 }*/
 
 HAL_StatusTypeDef create_Queue() {
-    canSendQueue = xQueueCreate(3, sizeof(communicate_with_stm32::MotorCmd));
+    canSendQueue = xQueueCreate(5, sizeof(communicate_with_stm32::MotorCmd));
     canUrgentQueue = xQueueCreate(3, sizeof(communicate_with_stm32::MotorCmd));
-    canParseQueue = xQueueCreate(3, sizeof(CarState_TypeDef));
-    if (canUrgentQueue != NULL && canSendQueue != NULL && canParseQueue != NULL) {
+    if (canUrgentQueue != NULL && canSendQueue != NULL) {
         return HAL_OK;
     }
+    nh.logerror("the freertos create error!");
     return HAL_ERROR;
 }
 
 //对c的weak函数进行重写
 extern "C" {
 
-
-void rosPubCallbk(void const *argument) {
+void rosCallback(void const *argument) {
     while (true) {
-
+        nh.spinOnce();
+        xEventGroupSetBits(feedDogEvent, rosEvent);
+        vTaskDelay(50);
     }
 }
 
-void CanProcessTCallbk(void const *argument) {
+void CanNormalTCallbk(void const *argument) {
+    communicate_with_stm32::MotorCmd normalcmd;
     while (true) {
-
+        if (xQueueReceive(canUrgentQueue, &normalcmd, 100) == pdTRUE) {
+            xSemaphoreTake(canMutex, portMAX_DELAY);
+            if (HAL_OK != motor.run_cmd(normalcmd.cmd, normalcmd.data)) {
+                char temp[100];
+                sprintf(temp, "the normal cmd:%s is error!", select_name(normalcmd.cmd));
+                nh.logwarn(temp);
+            }
+            xSemaphoreGive(canMutex);
+        }
+        xEventGroupSetBits(feedDogEvent, canNormalEvent);
+        vTaskDelay(50);
     }
 }
 
-void rosSubCallbk(void const *argument) {
-    while (true) {
-
-    }
-}
 
 void CanUrgentCallbk(void const *argument) {
     communicate_with_stm32::MotorCmd urgentcmd;
     while (true) {
-        xQueueReceive(canUrgentQueue, &urgentcmd, portMAX_DELAY);
-        HAL_CAN_AbortTxRequest(motor.mCan->hcan, motor.mCan->TxMailbox);
-        switch (urgentcmd.cmd) {
-            case cmd_Stop:
-                while(HAL_OK!=motor.stop()){
-                    nh.logfatal("motor stop error!");
-                    HAL_Delay(500);
-                }
-                break;
-            case cmd_sysReset:
-                while (HAL_OK !=motor.motion_system_reset())
-                {
-                    nh.logfatal("motor system reset error!");
-                    HAL_Delay(500);
-                }
-            default:
-                if(HAL_OK!=motor.run_cmd(urgentcmd.cmd))
-                {
-                    char temp[50];
-                    sprintf(temp,"the urgent cmd:%d is error!",urgentcmd.cmd);
-                    nh.logwarn(temp);
-                }
-                break;
+        if (xQueueReceive(canUrgentQueue, &urgentcmd, 100) == pdTRUE) {
+            xSemaphoreTake(canMutex, portMAX_DELAY);
+            HAL_CAN_AbortTxRequest(motor.mCan->hcan, motor.mCan->TxMailbox);
+            switch (urgentcmd.cmd) {
+                case cmd_Stop:
+                    while (HAL_OK != motor.stop()) {
+                        nh.logfatal("motor stop error!");
+                        HAL_Delay(500);
+                    }
+                    break;
+                case cmd_sysReset:
+                    while (HAL_OK != motor.motion_system_reset()) {
+                        nh.logfatal("motor system reset error!");
+                        HAL_Delay(500);
+                    }
+                default:
+                    if (HAL_OK != motor.run_cmd(urgentcmd.cmd)) {
+                        char temp[50];
+                        sprintf(temp, "the urgent cmd:%d is error!", urgentcmd.cmd);
+                        nh.logwarn(temp);
+                    }
+                    break;
+            }
+            xSemaphoreGive(canMutex);
         }
+        xEventGroupSetBits(feedDogEvent, canUrgentEvent);
+        vTaskDelay(50);
     }
 }
 
+void feedDogCallbk(void const *argument) {
+    HAL_IWDG_Refresh(&hiwdg);
+    uint32_t eventSum = (1 << 3) - 1;
+    while (true) {
+        if (pdTRUE == xEventGroupWaitBits(feedDogEvent,
+                                          eventSum,
+                                          pdTRUE,
+                                          pdTRUE,
+                                          3000))
+        HAL_IWDG_Refresh(&hiwdg);
+        else{
+            nh.logwarn("the dog is going to dead!");
+        }
+    }
+}
 #if (configGENERATE_RUN_TIME_STATS == 1) && (JLINK_DEBUG == 1)
 void configureTimerForRunTimeStats(void) {
     run_time_stats_tick = 0;
@@ -162,16 +224,40 @@ unsigned long getRunTimeCounterValue(void) {
     return run_time_stats_tick;
 }
 #endif
-/*void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
-    if (hcan->Instance == CAN1) {
-        motor_can.CAN_ReadMsg_IT(CAN_RX_FIFO0);
+}
+
+
+void stm32TopicCtrl_cb(const communicate_with_stm32::MotorCmd &cmd) {
+    string info;
+    if (cmd.isUrgent) {
+        if (pdTRUE != xQueueSendToFront(canUrgentQueue, &cmd, 5)) {
+            info = "the important cmd: " + to_string(cmd.cmd) +
+                   "send to queue fail!\nwe will try to send until success";
+            nh.logfatal(info.c_str());
+            while (pdTRUE != xQueueSendToFront(canUrgentQueue, &cmd, 0));
+            nh.loginfo("sucesss send to queue!");
+        }
+    } else {
+        if (pdTRUE != xQueueOverwrite(canUrgentQueue, &cmd)) {
+            info = "the normal cmd: " + to_string(cmd.cmd) + "send to queue fail!\nwe will try again";
+            nh.logwarn(info.c_str());
+            if (pdTRUE == xQueueOverwrite(canUrgentQueue, &cmd)) {
+                nh.loginfo("try again success!");
+            } else {
+                nh.loginfo("the cmd has been abundant!");
+            }
+        }
     }
 }
-void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan) {
-    if (hcan->Instance == CAN1) {
-        motor_can.CAN_ReadMsg_IT(CAN_RX_FIFO1);
+
+void stm32ServerCtrl_cb(const communicate_with_stm32::MotorControl::Request &req,
+                        communicate_with_stm32::MotorControl::Response &res) {
+    switch (req.cmd) {
+        case 1:
+            break;
+        default:
+            break;
     }
-}*/
 }
 
 

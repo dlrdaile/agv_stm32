@@ -14,7 +14,6 @@ extern "C" {
 #include "FreeRTOSConfig.h"
 #include "UserConfig.h"
 //创建几个任务队列
-
 void startup();
 void timely_detect(TIM_HandleTypeDef *htim);
 HAL_StatusTypeDef create_Queue();

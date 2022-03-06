@@ -50,9 +50,9 @@ HAL_StatusTypeDef Can::CAN_Init(CAN_FilterTypeDef *canFilter, uint16_t filtersiz
     if (result != HAL_OK) {
         return result;
     }
+#if JLINK_DEBUG == 1
     SEGGER_RTT_printf(0, "CAN is started\n");
-/*    __HAL_CAN_ENABLE_IT(this->hcan, CAN_IT_RX_FIFO0_MSG_PENDING);
-    __HAL_CAN_ENABLE_IT(this->hcan, CAN_IT_RX_FIFO1_MSG_PENDING);*/
+#endif
     return result;
 }
 
@@ -67,11 +67,13 @@ CanStatusTypeDef Can::CAN_SendMsg(const uint32_t &ExtID, uint8_t *TxData, const 
     while (HAL_CAN_GetTxMailboxesFreeLevel(this->hcan) < 1) {
     }
     if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &this->TxMailbox) != HAL_OK) {
+#if JLINK_DEBUG == 1
         SEGGER_RTT_printf(0, "Send to mailbox error!\n");
+#endif
         return CAN_ADD_MESSAGE_ERROR;
     } else {
 #if JLINK_DEBUG == 1
-        if (ExtID == oneMS_Encoder_msgID) {
+        if ((ExtID == oneMS_Encoder_msgID) || (ExtID == oneMS_Encoder_msgID)) {
             while (HAL_CAN_GetTxMailboxesFreeLevel(this->hcan) < 1) {
             }
             TxHeader.ExtId = (uint32_t) (ExtID | (1 << 16));
@@ -116,7 +118,7 @@ CanStatusTypeDef Can::CAN_ReadMsg(const uint32_t &EXTID, uint8_t *Rxdata) {
     SEGGER_RTT_printf(0, "--------------------------\n\n");
 
 #endif
-    if (EXTID == oneMS_Encoder_msgID) {
+    if ((EXTID == oneMS_Encoder_msgID) || (EXTID == EncoderData_msgID)) {
         uint8_t *p = (uint8_t *) ((uint32_t *) Rxdata + 1);
         if (HAL_OK != HAL_CAN_GetRxMessage(this->hcan, CAN_RX_FIFO0, &RxHeader, p)) {
             return CAN_NO_RECEIVE_ERROR;

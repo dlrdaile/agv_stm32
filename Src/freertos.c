@@ -27,6 +27,7 @@
 /* USER CODE BEGIN Includes */
 #include "startup.h"
 #include "SEGGER_RTT.h"
+#include "event_groups.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -46,45 +47,52 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
-
+xQueueHandle canSendQueue = NULL;
+xQueueHandle canUrgentQueue = NULL;
+SemaphoreHandle_t canMutex = NULL;
+EventGroupHandle_t feedDogEvent = NULL;
 /* USER CODE END Variables */
-osThreadId rosPubTaskHandle;
-osThreadId CanProcessTaskHandle;
-osThreadId rosSubTaskHandle;
+osThreadId rosTaskHandle;
+osThreadId CanNormalTaskHandle;
 osThreadId CanUrgentTaskHandle;
+osThreadId feedDogTaskHandle;
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
 
 /* USER CODE END FunctionPrototypes */
 
-void rosPubCallbk(void const * argument);
-void CanProcessTCallbk(void const * argument);
-void rosSubCallbk(void const * argument);
-void CanUrgentCallbk(void const * argument);
+void rosCallback(void const *argument);
+
+void CanNormalTCallbk(void const *argument);
+
+void CanUrgentCallbk(void const *argument);
+
+void feedDogCallbk(void const *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
 /* GetIdleTaskMemory prototype (linked to static allocation support) */
-void vApplicationGetIdleTaskMemory( StaticTask_t **ppxIdleTaskTCBBuffer, StackType_t **ppxIdleTaskStackBuffer, uint32_t *pulIdleTaskStackSize );
+void vApplicationGetIdleTaskMemory(StaticTask_t **ppxIdleTaskTCBBuffer, StackType_t **ppxIdleTaskStackBuffer,
+                                   uint32_t *pulIdleTaskStackSize);
 
 /* GetTimerTaskMemory prototype (linked to static allocation support) */
-void vApplicationGetTimerTaskMemory( StaticTask_t **ppxTimerTaskTCBBuffer, StackType_t **ppxTimerTaskStackBuffer, uint32_t *pulTimerTaskStackSize );
+void vApplicationGetTimerTaskMemory(StaticTask_t **ppxTimerTaskTCBBuffer, StackType_t **ppxTimerTaskStackBuffer,
+                                    uint32_t *pulTimerTaskStackSize);
 
 /* Hook prototypes */
 void configureTimerForRunTimeStats(void);
+
 unsigned long getRunTimeCounterValue(void);
 
 /* USER CODE BEGIN 1 */
 /* Functions needed when configGENERATE_RUN_TIME_STATS is on */
-__weak void configureTimerForRunTimeStats(void)
-{
+__weak void configureTimerForRunTimeStats(void) {
 
 }
 
-__weak unsigned long getRunTimeCounterValue(void)
-{
-return 0;
+__weak unsigned long getRunTimeCounterValue(void) {
+    return 0;
 }
 /* USER CODE END 1 */
 
@@ -92,12 +100,12 @@ return 0;
 static StaticTask_t xIdleTaskTCBBuffer;
 static StackType_t xIdleStack[configMINIMAL_STACK_SIZE];
 
-void vApplicationGetIdleTaskMemory( StaticTask_t **ppxIdleTaskTCBBuffer, StackType_t **ppxIdleTaskStackBuffer, uint32_t *pulIdleTaskStackSize )
-{
-  *ppxIdleTaskTCBBuffer = &xIdleTaskTCBBuffer;
-  *ppxIdleTaskStackBuffer = &xIdleStack[0];
-  *pulIdleTaskStackSize = configMINIMAL_STACK_SIZE;
-  /* place for user code */
+void vApplicationGetIdleTaskMemory(StaticTask_t **ppxIdleTaskTCBBuffer, StackType_t **ppxIdleTaskStackBuffer,
+                                   uint32_t *pulIdleTaskStackSize) {
+    *ppxIdleTaskTCBBuffer = &xIdleTaskTCBBuffer;
+    *ppxIdleTaskStackBuffer = &xIdleStack[0];
+    *pulIdleTaskStackSize = configMINIMAL_STACK_SIZE;
+    /* place for user code */
 }
 /* USER CODE END GET_IDLE_TASK_MEMORY */
 
@@ -105,12 +113,12 @@ void vApplicationGetIdleTaskMemory( StaticTask_t **ppxIdleTaskTCBBuffer, StackTy
 static StaticTask_t xTimerTaskTCBBuffer;
 static StackType_t xTimerStack[configTIMER_TASK_STACK_DEPTH];
 
-void vApplicationGetTimerTaskMemory( StaticTask_t **ppxTimerTaskTCBBuffer, StackType_t **ppxTimerTaskStackBuffer, uint32_t *pulTimerTaskStackSize )
-{
-  *ppxTimerTaskTCBBuffer = &xTimerTaskTCBBuffer;
-  *ppxTimerTaskStackBuffer = &xTimerStack[0];
-  *pulTimerTaskStackSize = configTIMER_TASK_STACK_DEPTH;
-  /* place for user code */
+void vApplicationGetTimerTaskMemory(StaticTask_t **ppxTimerTaskTCBBuffer, StackType_t **ppxTimerTaskStackBuffer,
+                                    uint32_t *pulTimerTaskStackSize) {
+    *ppxTimerTaskTCBBuffer = &xTimerTaskTCBBuffer;
+    *ppxTimerTaskStackBuffer = &xTimerStack[0];
+    *pulTimerTaskStackSize = configTIMER_TASK_STACK_DEPTH;
+    /* place for user code */
 }
 /* USER CODE END GET_TIMER_TASK_MEMORY */
 
@@ -120,106 +128,98 @@ void vApplicationGetTimerTaskMemory( StaticTask_t **ppxTimerTaskTCBBuffer, Stack
   * @retval None
   */
 void MX_FREERTOS_Init(void) {
-  /* USER CODE BEGIN Init */
+    /* USER CODE BEGIN Init */
+    feedDogEvent = xEventGroupCreate();
+    if (canMutex == NULL) {
+#if JLINK_DEBUG == 1
+        SEGGER_RTT_printf(0, "eventgroup create error!\n");
+#endif
+        while (1);
+    }
+    /* USER CODE END Init */
 
-  /* USER CODE END Init */
+    /* USER CODE BEGIN RTOS_MUTEX */
+    /* add mutexes, ... */
+    canMutex = xSemaphoreCreateMutex();
+    if (canMutex == NULL) {
+#if JLINK_DEBUG == 1
+        SEGGER_RTT_printf(0, "canMutex create error!\n");
+#endif
+        while (1);
+    }
+    /* USER CODE END RTOS_MUTEX */
 
-  /* USER CODE BEGIN RTOS_MUTEX */
-  /* add mutexes, ... */
-  /* USER CODE END RTOS_MUTEX */
+    /* USER CODE BEGIN RTOS_SEMAPHORES */
+    /* add semaphores, ... */
+    /* USER CODE END RTOS_SEMAPHORES */
 
-  /* USER CODE BEGIN RTOS_SEMAPHORES */
-  /* add semaphores, ... */
-  /* USER CODE END RTOS_SEMAPHORES */
+    /* USER CODE BEGIN RTOS_TIMERS */
+    /* start timers, add new ones, ... */
+    /* USER CODE END RTOS_TIMERS */
 
-  /* USER CODE BEGIN RTOS_TIMERS */
-  /* start timers, add new ones, ... */
-  /* USER CODE END RTOS_TIMERS */
+    /* USER CODE BEGIN RTOS_QUEUES */
+    /* add queues, ... */
+    if (create_Queue() != HAL_OK) {
+#if JLINK_DEBUG == 1
+        SEGGER_RTT_printf(0, "queue create error!\n");
+#endif
+        while (1);
+    }
+    /* USER CODE END RTOS_QUEUES */
 
-  /* USER CODE BEGIN RTOS_QUEUES */
-  /* add queues, ... */
-  if(create_Queue() != HAL_OK)
-  {
-      SEGGER_RTT_printf(0,"queue create error!\n");
-      while (1);
-  }
-  /* USER CODE END RTOS_QUEUES */
+    /* Create the thread(s) */
+    /* definition and creation of rosTask */
+    osThreadDef(rosTask, rosCallback, osPriorityAboveNormal, 0, 2048);
+    rosTaskHandle = osThreadCreate(osThread(rosTask), NULL);
 
-  /* Create the thread(s) */
-  /* definition and creation of rosPubTask */
-  osThreadDef(rosPubTask, rosPubCallbk, osPriorityBelowNormal, 0, 128);
-  rosPubTaskHandle = osThreadCreate(osThread(rosPubTask), NULL);
+    /* definition and creation of CanNormalTask */
+    osThreadDef(CanNormalTask, CanNormalTCallbk, osPriorityNormal, 0, 512);
+    CanNormalTaskHandle = osThreadCreate(osThread(CanNormalTask), NULL);
 
-  /* definition and creation of CanProcessTask */
-  osThreadDef(CanProcessTask, CanProcessTCallbk, osPriorityNormal, 0, 256);
-  CanProcessTaskHandle = osThreadCreate(osThread(CanProcessTask), NULL);
+    /* definition and creation of CanUrgentTask */
+    osThreadDef(CanUrgentTask, CanUrgentCallbk, osPriorityHigh, 0, 512);
+    CanUrgentTaskHandle = osThreadCreate(osThread(CanUrgentTask), NULL);
 
-  /* definition and creation of rosSubTask */
-  osThreadDef(rosSubTask, rosSubCallbk, osPriorityNormal, 0, 128);
-  rosSubTaskHandle = osThreadCreate(osThread(rosSubTask), NULL);
+    /* definition and creation of feedDogTask */
+    osThreadDef(feedDogTask, feedDogCallbk, osPriorityRealtime, 0, 128);
+    feedDogTaskHandle = osThreadCreate(osThread(feedDogTask), NULL);
 
-  /* definition and creation of CanUrgentTask */
-  osThreadDef(CanUrgentTask, CanUrgentCallbk, osPriorityRealtime, 0, 128);
-  CanUrgentTaskHandle = osThreadCreate(osThread(CanUrgentTask), NULL);
-
-  /* USER CODE BEGIN RTOS_THREADS */
-  /* add threads, ... */
-  /* USER CODE END RTOS_THREADS */
+    /* USER CODE BEGIN RTOS_THREADS */
+    /* add threads, ... */
+    /* USER CODE END RTOS_THREADS */
 
 }
 
-/* USER CODE BEGIN Header_rosPubCallbk */
+/* USER CODE BEGIN Header_rosCallback */
 /**
-  * @brief  Function implementing the rosPubTask thread.
+  * @brief  Function implementing the rosTask thread.
   * @param  argument: Not used
   * @retval None
   */
-/* USER CODE END Header_rosPubCallbk */
-__weak void rosPubCallbk(void const * argument)
-{
-  /* USER CODE BEGIN rosPubCallbk */
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
-  /* USER CODE END rosPubCallbk */
+/* USER CODE END Header_rosCallback */
+__weak void rosCallback(void const *argument) {
+    /* USER CODE BEGIN rosCallback */
+    /* Infinite loop */
+    for (;;) {
+        osDelay(1);
+    }
+    /* USER CODE END rosCallback */
 }
 
-/* USER CODE BEGIN Header_CanProcessTCallbk */
+/* USER CODE BEGIN Header_CanNormalTCallbk */
 /**
-* @brief Function implementing the CanProcessTask thread.
+* @brief Function implementing the CanNormalTask thread.
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE END Header_CanProcessTCallbk */
-__weak void CanProcessTCallbk(void const * argument)
-{
-  /* USER CODE BEGIN CanProcessTCallbk */
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
-  /* USER CODE END CanProcessTCallbk */
-}
-
-/* USER CODE BEGIN Header_rosSubCallbk */
-/**
-* @brief Function implementing the rosSubTask thread.
-* @param argument: Not used
-* @retval None
-*/
-/* USER CODE END Header_rosSubCallbk */
-__weak void rosSubCallbk(void const * argument)
-{
-  /* USER CODE BEGIN rosSubCallbk */
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
-  /* USER CODE END rosSubCallbk */
+/* USER CODE END Header_CanNormalTCallbk */
+__weak void CanNormalTCallbk(void const *argument) {
+    /* USER CODE BEGIN CanNormalTCallbk */
+    /* Infinite loop */
+    for (;;) {
+        osDelay(1);
+    }
+    /* USER CODE END CanNormalTCallbk */
 }
 
 /* USER CODE BEGIN Header_CanUrgentCallbk */
@@ -229,15 +229,29 @@ __weak void rosSubCallbk(void const * argument)
 * @retval None
 */
 /* USER CODE END Header_CanUrgentCallbk */
-__weak void CanUrgentCallbk(void const * argument)
-{
-  /* USER CODE BEGIN CanUrgentCallbk */
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
-  /* USER CODE END CanUrgentCallbk */
+__weak void CanUrgentCallbk(void const *argument) {
+    /* USER CODE BEGIN CanUrgentCallbk */
+    /* Infinite loop */
+    for (;;) {
+        osDelay(1);
+    }
+    /* USER CODE END CanUrgentCallbk */
+}
+
+/* USER CODE BEGIN Header_feedDogCallbk */
+/**
+* @brief Function implementing the feedDogTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_feedDogCallbk */
+__weak void feedDogCallbk(void const *argument) {
+    /* USER CODE BEGIN feedDogCallbk */
+    /* Infinite loop */
+    for (;;) {
+        osDelay(1);
+    }
+    /* USER CODE END feedDogCallbk */
 }
 
 /* Private application code --------------------------------------------------*/

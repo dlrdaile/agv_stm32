@@ -48,19 +48,19 @@
 #include "stm32f7xx_hal.h"
 #include "stm32f7xx_hal_uart.h"
 #endif /* STM32F7xx */
-
+#define buffersize 1024
 extern UART_HandleTypeDef huart4;
 
 class STM32Hardware {
   protected:
     UART_HandleTypeDef *huart;
 
-    const static uint16_t rbuflen = 512;
+    const static uint16_t rbuflen = buffersize;
     uint8_t rbuf[rbuflen];
     uint32_t rind;
     inline uint32_t getRdmaInd(void){ return (rbuflen - __HAL_DMA_GET_COUNTER(huart->hdmarx)) & (rbuflen - 1); }
 
-    const static uint16_t tbuflen = 512;
+    const static uint16_t tbuflen = buffersize;
     uint8_t tbuf[tbuflen];
     uint32_t twind, tfind;
 
