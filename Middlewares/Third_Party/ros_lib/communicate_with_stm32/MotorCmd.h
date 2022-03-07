@@ -16,7 +16,7 @@ namespace communicate_with_stm32
       _cmd_type cmd;
       typedef bool _isUrgent_type;
       _isUrgent_type isUrgent;
-      uint16_t data[4];
+      int16_t data[4];
 
     MotorCmd():
       cmd(0),
@@ -38,8 +38,13 @@ namespace communicate_with_stm32
       *(outbuffer + offset + 0) = (u_isUrgent.base >> (8 * 0)) & 0xFF;
       offset += sizeof(this->isUrgent);
       for( uint32_t i = 0; i < 4; i++){
-      *(outbuffer + offset + 0) = (this->data[i] >> (8 * 0)) & 0xFF;
-      *(outbuffer + offset + 1) = (this->data[i] >> (8 * 1)) & 0xFF;
+      union {
+        int16_t real;
+        uint16_t base;
+      } u_datai;
+      u_datai.real = this->data[i];
+      *(outbuffer + offset + 0) = (u_datai.base >> (8 * 0)) & 0xFF;
+      *(outbuffer + offset + 1) = (u_datai.base >> (8 * 1)) & 0xFF;
       offset += sizeof(this->data[i]);
       }
       return offset;
@@ -59,15 +64,21 @@ namespace communicate_with_stm32
       this->isUrgent = u_isUrgent.real;
       offset += sizeof(this->isUrgent);
       for( uint32_t i = 0; i < 4; i++){
-      this->data[i] =  ((uint16_t) (*(inbuffer + offset)));
-      this->data[i] |= ((uint16_t) (*(inbuffer + offset + 1))) << (8 * 1);
+      union {
+        int16_t real;
+        uint16_t base;
+      } u_datai;
+      u_datai.base = 0;
+      u_datai.base |= ((uint16_t) (*(inbuffer + offset + 0))) << (8 * 0);
+      u_datai.base |= ((uint16_t) (*(inbuffer + offset + 1))) << (8 * 1);
+      this->data[i] = u_datai.real;
       offset += sizeof(this->data[i]);
       }
      return offset;
     }
 
     virtual const char * getType() override { return "communicate_with_stm32/MotorCmd"; };
-    virtual const char * getMD5() override { return "46990b6be74dc03c09757853bb458229"; };
+    virtual const char * getMD5() override { return "82317bc357f955631b3fbf5f7379212e"; };
 
   };
 

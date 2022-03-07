@@ -176,6 +176,13 @@ void MX_FREERTOS_Init(void) {
   sw3TimerHandle = osTimerCreate(osTimer(sw3Timer), osTimerPeriodic, NULL);
 
   /* USER CODE BEGIN RTOS_TIMERS */
+    osStatus result;
+    result = osTimerStart(batteryTimerHandle, 1000);
+    result = osTimerStart(encoderTimerHandle, 100);
+    result = osTimerStart(sw3TimerHandle, 20);
+    result = osTimerStart(sw2TimerHandle, 20);
+    result = osTimerStop(sw3TimerHandle);
+    result = osTimerStop(sw2TimerHandle);
     /* start timers, add new ones, ... */
   /* USER CODE END RTOS_TIMERS */
 
@@ -191,7 +198,7 @@ void MX_FREERTOS_Init(void) {
 
   /* Create the thread(s) */
   /* definition and creation of rosTask */
-  osThreadDef(rosTask, rosCallback, osPriorityBelowNormal, 0, 2048);
+  osThreadDef(rosTask, rosCallback, osPriorityNormal, 0, 2048);
   rosTaskHandle = osThreadCreate(osThread(rosTask), NULL);
 
   /* definition and creation of CanNormalTask */
@@ -294,11 +301,10 @@ __weak void feedDogCallbk(void const * argument)
 __weak void keyCheckCallbk(void const * argument)
 {
   /* USER CODE BEGIN keyCheckCallbk */
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
+    /* Infinite loop */
+    for (;;) {
+        osDelay(1);
+    }
   /* USER CODE END keyCheckCallbk */
 }
 

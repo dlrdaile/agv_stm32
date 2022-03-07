@@ -62,10 +62,12 @@ void stm32TopicCtrl_cb(const communicate_with_stm32::MotorCmd &cmd);
 void stm32ServerCtrl_cb(const communicate_with_stm32::MotorControl::Request &req,
                         communicate_with_stm32::MotorControl::Response &res);
 
-communicate_with_stm32::MotorData mStateData;
 
 ros::NodeHandle nh;
-ros::Publisher motorState("motorState", &mStateData);
+//TODO:注意这里是一个测试的注释
+//communicate_with_stm32::MotorData mStateData;
+//ros::Publisher motorState("motorState", &mStateData);
+ros::Publisher motorState("motorState", &motor.motor_state.motorData);
 ros::Subscriber<communicate_with_stm32::MotorCmd> motorSub("stm32TopicCtrl", &stm32TopicCtrl_cb);
 
 ros::ServiceServer<communicate_with_stm32::MotorControl::Request,
@@ -86,15 +88,25 @@ extern TimerHandle_t sw3TimerHandle;
 
 void startup() {
     nh.initNode();
+    SEGGER_RTT_Init();
+    motor.InitState();
     nh.advertise(motorState);
     nh.subscribe(motorSub);
     nh.advertiseService(motorSrv);
 #if JLINK_DEBUG == 1
-    SEGGER_RTT_Init();
+    SEGGER_RTT_printf(0,"it is time to start!\n");
 #endif
-    while (!nh.connected())
-    {
+    while (!nh.connected()) {
+        SEGGER_RTT_printf(0,"no catch!\n");
         nh.spinOnce();
+        HAL_Delay(1000);
+    }
+    while (true) {
+//        mStateData.battery = motor.motor_state.battery_votage;
+        motorState.publish(&motor.motor_state.motorData);
+        nh.spinOnce();
+//        hled1.Toggle();
+        HAL_Delay(500);
     }
 }
 
@@ -106,17 +118,23 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
     nh.getHardware()->flush();
 }
 
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
-    BaseType_t xHighPriorityTaskWoken;
-    if(GPIO_Pin == SW2_Pin)
-    {
-        xTimerStartFromISR(sw2TimerHandle,&xHighPriorityTaskWoken);
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+/*    BaseType_t xHighPriorityTaskWoken;
+    if (GPIO_Pin == SW2_Pin) {
+        xTimerStartFromISR(sw2TimerHandle, &xHighPriorityTaskWoken);
     }
-    if(GPIO_Pin == SW3_Pin)
-    {
-        xTimerStartFromISR(sw3TimerHandle,&xHighPriorityTaskWoken);
+    if (GPIO_Pin == SW3_Pin) {
+        xTimerStartFromISR(sw3TimerHandle, &xHighPriorityTaskWoken);
     }
-    portYIELD_FROM_ISR(xHighPriorityTaskWoken);
+    portYIELD_FROM_ISR(xHighPriorityTaskWoken);*/
+    if (GPIO_Pin == SW2_Pin) {
+        hled1.On();
+        hled0.Toggle();
+    }
+    if (GPIO_Pin == SW3_Pin) {
+        hled1.Off();
+        hled0.Toggle();
+    }
 }
 
 void timely_detect(TIM_HandleTypeDef *htim) {
@@ -181,7 +199,6 @@ void CanNormalTCallbk(void const *argument) {
         }
         xEventGroupSetBits(feedDogEvent, canNormalEvent);
 //        xTaskNotify(feedDogTaskHandle,canNormalEvent,eSetBits);
-        vTaskDelay(50);
     }
 }
 
@@ -205,7 +222,7 @@ void CanUrgentCallbk(void const *argument) {
                         HAL_Delay(500);
                     }
                 default:
-                    if (HAL_OK != motor.topic_cmd(urgentcmd.cmd)) {
+                    if (HAL_OK != motor.topic_cmd(urgentcmd.cmd, urgentcmd.data)) {
                         char temp[50];
                         sprintf(temp, "the urgent cmd:%d is error!", urgentcmd.cmd);
                         nh.logwarn(temp);
@@ -216,22 +233,21 @@ void CanUrgentCallbk(void const *argument) {
         }
         xEventGroupSetBits(feedDogEvent, canUrgentEvent);
 //        xTaskNotify(feedDogTaskHandle,canUrgentEvent,eSetBits);
-        vTaskDelay(50);
     }
 }
 
 void feedDogCallbk(void const *argument) {
     HAL_IWDG_Refresh(&hiwdg);
     uint32_t eventSum = (1 << 3) - 1;
-    uint32_t uNotisfyValue;
+//    uint32_t uNotisfyValue;
     while (true) {
         if (pdTRUE == xEventGroupWaitBits(feedDogEvent,
                                           eventSum,
                                           pdTRUE,
                                           pdTRUE,
                                           3000))
-        HAL_IWDG_Refresh(&hiwdg);
-        else{
+            HAL_IWDG_Refresh(&hiwdg);
+        else {
             nh.logwarn("the dog is going to dead!");
         }
 /*        xTaskNotifyWait(0x00,
@@ -241,20 +257,17 @@ void feedDogCallbk(void const *argument) {
         if(uNotisfyValue == eventSum){
             HAL_IWDG_Refresh(&hiwdg);
         }*/
-        vTaskDelay(100);
     }
 }
 
-void keyCheckCallbk(void const * argument){
-    while (true){
-        if(hsw2.ButtenFlag == BUTTEN_ON)
-        {
+void keyCheckCallbk(void const *argument) {
+    while (true) {
+        if (hsw2.ButtenFlag == BUTTEN_ON) {
             hled0.On();
             hled1.Toggle();
             hsw2.ButtenFlag = BUTTEN_OFF;
         }
-        if(hsw3.ButtenFlag == BUTTEN_ON)
-        {
+        if (hsw3.ButtenFlag == BUTTEN_ON) {
             hled1.Toggle();
             hled0.Off();
             hsw3.ButtenFlag = BUTTEN_OFF;
@@ -271,23 +284,25 @@ unsigned long getRunTimeCounterValue(void) {
 }
 #endif
 
-void encoderTimCallbk(void const * argument){
+void encoderTimCallbk(void const *argument) {
     communicate_with_stm32::MotorCmd encoder_cmd;
     encoder_cmd.cmd = cmd_updateEncoderData;
-    xQueueOverwrite(canSendQueue,&encoder_cmd);
+    encoder_cmd.isUrgent = false;
+    xQueueOverwrite(canSendQueue, &encoder_cmd);
 }
 
-void batteryTimCallbk(void const * argument){
+void batteryTimCallbk(void const *argument) {
     communicate_with_stm32::MotorCmd battery_cmd;
     battery_cmd.cmd = cmd_updateBattery;
-    xQueueOverwrite(canSendQueue,&battery_cmd);
+    battery_cmd.isUrgent = false;
+    xQueueOverwrite(canSendQueue, &battery_cmd);
 }
 
-void sw2TimCallbk(void const * argument){
+void sw2TimCallbk(void const *argument) {
     hsw2.Key_timely_detect();
 }
 
-void sw3TimCallbk(void const * argument){
+void sw3TimCallbk(void const *argument) {
     hsw3.Key_timely_detect();
 }
 
@@ -295,7 +310,7 @@ void sw3TimCallbk(void const * argument){
 
 
 void stm32TopicCtrl_cb(const communicate_with_stm32::MotorCmd &cmd) {
-    string info;
+/*    string info;
     if (cmd.isUrgent) {
         if (pdTRUE != xQueueSendToFront(canUrgentQueue, &cmd, 5)) {
             info = "the important cmd: " + to_string(cmd.cmd) +
@@ -314,17 +329,28 @@ void stm32TopicCtrl_cb(const communicate_with_stm32::MotorCmd &cmd) {
                 nh.loginfo("the cmd has been abundant!");
             }
         }
+    }*/
+    if(HAL_OK != motor.topic_cmd(cmd.cmd, cmd.data)){
+//        nh.loginfo("success!");
+        nh.logwarn("the cmd fail!");
     }
 }
 
 void stm32ServerCtrl_cb(const communicate_with_stm32::MotorControl::Request &req,
                         communicate_with_stm32::MotorControl::Response &res) {
-    if(motor.server_cmd(req,res) == HAL_OK)
+//    if (motor.server_cmd(req, res) == HAL_OK) {
+//        res.success = true;
+//    } else
+//        res.success = false;
+    if(motor.topic_cmd(req.cmd) == HAL_OK)
     {
         res.success = true;
+        res.time = nh.now();
     }
-    else
+    else{
         res.success = false;
+        res.time = nh.now();
+    }
 }
 
 

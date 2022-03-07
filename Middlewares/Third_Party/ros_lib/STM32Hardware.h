@@ -120,7 +120,7 @@ class STM32Hardware {
       flush();
     }
 
-    unsigned long time(){ return HAL_GetTick();; }
+    unsigned long time(){ return HAL_GetTick(); }
 
   protected:
 };

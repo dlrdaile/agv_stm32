@@ -32,7 +32,8 @@ typedef struct {
     int16_t setted_speed[4];
     int8_t oneMs_encoder[4];
     EncoderData_TypeDef current_encData;
-    EncoderData_TypeDef last_encData;
+    TickType_t current_zero_tick;
+    TickType_t last_zero_tick;
     communicate_with_stm32::MotorData motorData;
 } CarState_TypeDef;
 
@@ -42,16 +43,16 @@ typedef enum {
     cmd_Stop,
     cmd_updateBattery,
     cmd_updateEncoderData,
-    cmd_updateOneMsEncoder,
+    cmd_getIncSpeed,
+    cmd_getAveSpeed,
     cmd_clearEncoder,
     cmd_xyMotion,
     cmd_swerveMotion,
-    cmd_rotateMotion = 9,
-
+    cmd_rotateMotion = 10,
 } topic_cmd_set;
 
 typedef enum {
-    cmd_checkAveSpeed = 10,
+    cmd_checkAveSpeed = 11,
     cmd_checkInsSpeed,
     cmd_checkEncoderData,
     cmd_checkOneMsEncoder,
@@ -144,7 +145,7 @@ public:
      */
     HAL_StatusTypeDef InitState();
 
-    HAL_StatusTypeDef topic_cmd(const uint8_t &cmd, uint16_t *TxData = NULL);
+    HAL_StatusTypeDef topic_cmd(const uint8_t &cmd,const int16_t *TxData = NULL);
 
     HAL_StatusTypeDef server_cmd(const communicate_with_stm32::MotorControl::Request &req,
                                  communicate_with_stm32::MotorControl::Response &res);

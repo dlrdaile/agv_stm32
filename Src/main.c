@@ -98,10 +98,10 @@ int main(void)
   MX_IWDG_Init();
   /* USER CODE BEGIN 2 */
 #if (JLINK_DEBUG == 1) && (configGENERATE_RUN_TIME_STATS == 1)
-    HAL_TIM_Base_Start_IT(&htim6);
+//    HAL_TIM_Base_Start_IT(&htim6);
 #endif
     startup();
-    HAL_IWDG_Refresh(&hiwdg);
+//    HAL_IWDG_Refresh(&hiwdg);
   /* USER CODE END 2 */
 
   /* Call init function for freertos objects (in freertos.c) */
