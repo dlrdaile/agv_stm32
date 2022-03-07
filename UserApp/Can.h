@@ -49,7 +49,7 @@ public:
      * @param Rxdata 用以接收数据的数组
      * @return 接收状态
      */
-    CanStatusTypeDef CAN_ReadMsg (const uint32_t &ExtID,uint8_t *Rxdata);
+    CanStatusTypeDef CAN_ReadMsg (const uint32_t &ExtID,uint8_t Rxdata[]) const;
 public:
     CAN_HandleTypeDef *hcan;
     uint32_t TxMailbox;

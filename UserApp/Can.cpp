@@ -72,8 +72,8 @@ CanStatusTypeDef Can::CAN_SendMsg(const uint32_t &ExtID, uint8_t *TxData, const 
 #endif
         return CAN_ADD_MESSAGE_ERROR;
     } else {
-#if JLINK_DEBUG == 1
-        if ((ExtID == oneMS_Encoder_msgID) || (ExtID == oneMS_Encoder_msgID)) {
+#if Can_Send_test == 1
+        if ((ExtID == oneMS_Encoder_msgID) || (ExtID == EncoderData_msgID)) {
             while (HAL_CAN_GetTxMailboxesFreeLevel(this->hcan) < 1) {
             }
             TxHeader.ExtId = (uint32_t) (ExtID | (1 << 16));
@@ -86,7 +86,7 @@ CanStatusTypeDef Can::CAN_SendMsg(const uint32_t &ExtID, uint8_t *TxData, const 
     }
 }
 
-CanStatusTypeDef Can::CAN_ReadMsg(const uint32_t &EXTID, uint8_t *Rxdata) {
+CanStatusTypeDef Can::CAN_ReadMsg(const uint32_t &EXTID, uint8_t Rxdata[]) const {
     CAN_RxHeaderTypeDef RxHeader;
     if (HAL_CAN_GetRxFifoFillLevel(this->hcan, CAN_RX_FIFO0) == 0) {
         return CAN_NO_RECEIVE_ERROR;
@@ -98,15 +98,16 @@ CanStatusTypeDef Can::CAN_ReadMsg(const uint32_t &EXTID, uint8_t *Rxdata) {
         return CAN_RECEIVE_ERROR;
     }
 
-#if JLINK_DEBUG == 1
+#if JLINK_DEBUG == 1 && Can_Recev_test == 1
     SEGGER_RTT_printf(0, "StdID = 0x%04x\n", RxHeader.StdId);
     SEGGER_RTT_printf(0, "ExtID = 0x%08x\n", RxHeader.ExtId);
     SEGGER_RTT_printf(0, "RTR(0=Data,2=Remote) = %d\n", RxHeader.RTR);
     SEGGER_RTT_printf(0, "IDE(0=Std,4=Ext) = %d\n", RxHeader.IDE);
+    SEGGER_RTT_printf(0, "DLC = %d\n", RxHeader.DLC);
     if (RxHeader.RTR != 2) {
         for (int i = 0; i < RxHeader.DLC; ++i) {
             if (i == 0) {
-                SEGGER_RTT_printf(0, "DLC = %d\n", RxHeader.DLC);
+//                SEGGER_RTT_printf(0, "DLC = %d\n", RxHeader.DLC);
                 SEGGER_RTT_printf(0, "the received data is :0x");
             }
             SEGGER_RTT_printf(0, "%02x", Rxdata[i]);
@@ -116,14 +117,14 @@ CanStatusTypeDef Can::CAN_ReadMsg(const uint32_t &EXTID, uint8_t *Rxdata) {
         }
     }
     SEGGER_RTT_printf(0, "--------------------------\n\n");
-
 #endif
     if ((EXTID == oneMS_Encoder_msgID) || (EXTID == EncoderData_msgID)) {
-        uint8_t *p = (uint8_t *) ((uint32_t *) Rxdata + 1);
+        HAL_Delay(1);
+        auto *p = (uint8_t *) ((uint32_t *) Rxdata + 1);
         if (HAL_OK != HAL_CAN_GetRxMessage(this->hcan, CAN_RX_FIFO0, &RxHeader, p)) {
             return CAN_NO_RECEIVE_ERROR;
         }
-#if JLINK_DEBUG == 1
+#if JLINK_DEBUG == 1 && Can_Recev_test == 1
         SEGGER_RTT_printf(0, "the oneMS_Encoder_msgID's second ID:\n");
         SEGGER_RTT_printf(0, "StdID = 0x%04x\n", RxHeader.StdId);
         SEGGER_RTT_printf(0, "ExtID = 0x%08x\n", RxHeader.ExtId);

@@ -48,7 +48,7 @@
 #include "stm32f7xx_hal.h"
 #include "stm32f7xx_hal_uart.h"
 #endif /* STM32F7xx */
-#define buffersize 1024
+#define buffersize 2048
 extern UART_HandleTypeDef huart4;
 
 class STM32Hardware {
@@ -120,7 +120,7 @@ class STM32Hardware {
       flush();
     }
 
-    unsigned long time(){ return HAL_GetTick();; }
+    unsigned long time(){ return HAL_GetTick(); }
 
   protected:
 };

@@ -16,6 +16,7 @@ extern "C" {
 //创建几个任务队列
 void startup();
 void timely_detect(TIM_HandleTypeDef *htim);
+HAL_StatusTypeDef start_timer();
 HAL_StatusTypeDef create_Queue();
 /*void on_UART_IDLE(UART_HandleTypeDef *huart);
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);*/
