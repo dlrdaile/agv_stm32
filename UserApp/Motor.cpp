@@ -190,10 +190,12 @@ HAL_StatusTypeDef Motor::stop() {
 }
 
 HAL_StatusTypeDef Motor::InitState() {
-    if (!nh.getParam("mEncoderParam", &this->encoderCheckFlag, 1, 500)) {
+    if (!nh.getParam("mEncorderParam", &this->encoderCheckFlag, 1, 500)) {
+        nh.logwarn("get param error!set the enable timely encoder to true default!");
         this->encoderCheckFlag = true;
     }
     if (!nh.getParam("mbatteryParam", &this->batteryCheckFlag, 1, 500)) {
+        nh.logwarn("get param error!set the enable timely battery to true default!");
         this->batteryCheckFlag = true;
     }
     if ((this->mCan->CAN_Init() != HAL_OK)

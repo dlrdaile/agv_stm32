@@ -106,6 +106,7 @@ void startup() {
     SEGGER_RTT_printf(0, "it is time to start!\n");
 #endif
     if (!nh.getParam("isPubMStat", &IsPublish, 1, 500)) {
+        nh.logwarn("get param error!set the Pub to false default!");
         IsPublish = false;
     }
     nh.spinOnce();
@@ -163,9 +164,11 @@ HAL_StatusTypeDef start_timer() {
     int battery_period;
     BaseType_t result;
     if (!nh.getParam("mEncorderPrd", &encoder_period, 1, 500)) {
+        nh.logwarn("get param error!set the encorder period to 100ms default!");
         encoder_period = 100;
     }
     if (!nh.getParam("mBatteryPrd", &battery_period, 1, 500)) {
+        nh.logwarn("get param error!set the battery period to 1000ms default!");
         battery_period = 1000;
     }
     if (motor.encoderCheckFlag) {
