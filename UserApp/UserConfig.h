@@ -11,7 +11,7 @@
 extern "C" {
 #endif
 #define JLINK_DEBUG 1
-#define Can_Recev_test 1
+#define Can_Recev_test 0
 #define Can_Send_test 0
 #ifdef __cplusplus
 }

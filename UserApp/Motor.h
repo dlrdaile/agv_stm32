@@ -80,13 +80,13 @@ public:
 
     /**
      * @brief 设置各个轮子的速度,设定的数值等于 （1e-4 * value）
-     * @param FL 左前轮
-     * @param FR 右前轮
-     * @param BL 左后轮
-     * @param BR 右后轮
+     * @param v1 左前轮
+     * @param v2 右前轮
+     * @param v3 左后轮
+     * @param v4 右后轮
      * @return
      */
-    HAL_StatusTypeDef setSpeed(int16_t FL = 0, int16_t FR = 0, int16_t BL = 0, int16_t BR = 0);
+    HAL_StatusTypeDef setSpeed(int16_t v1 = 0, int16_t v2 = 0, int16_t v3 = 0, int16_t v4 = 0);
 
     /**
      * @brief 对底盘的驱动系统进行重启

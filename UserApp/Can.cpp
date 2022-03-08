@@ -91,13 +91,12 @@ CanStatusTypeDef Can::CAN_ReadMsg(const uint32_t &EXTID, uint8_t Rxdata[]) const
     if (HAL_CAN_GetRxFifoFillLevel(this->hcan, CAN_RX_FIFO0) == 0) {
         return CAN_NO_RECEIVE_ERROR;
     }
+#if JLINK_DEBUG == 1 && Can_Recev_test == 1
+    SEGGER_RTT_printf(0,"current HAL_CAN_GetRxFifoFillLevel is %d\n",HAL_CAN_GetRxFifoFillLevel(this->hcan, CAN_RX_FIFO0));
+#endif
     if (HAL_CAN_GetRxMessage(this->hcan, CAN_RX_FIFO0, &RxHeader, Rxdata) != HAL_OK) {
         return CAN_GET_MESSAGE_ERROR;
     }
-    if (EXTID != RxHeader.ExtId) {
-        return CAN_RECEIVE_ERROR;
-    }
-
 #if JLINK_DEBUG == 1 && Can_Recev_test == 1
     SEGGER_RTT_printf(0, "StdID = 0x%04x\n", RxHeader.StdId);
     SEGGER_RTT_printf(0, "ExtID = 0x%08x\n", RxHeader.ExtId);
@@ -116,15 +115,24 @@ CanStatusTypeDef Can::CAN_ReadMsg(const uint32_t &EXTID, uint8_t Rxdata[]) const
             }
         }
     }
-    SEGGER_RTT_printf(0, "--------------------------\n\n");
+    SEGGER_RTT_printf(0, "*******************************\n\n");
 #endif
+    if (EXTID != RxHeader.ExtId) {
+        return CAN_RECEIVE_ERROR;
+    }
+
     if ((EXTID == oneMS_Encoder_msgID) || (EXTID == EncoderData_msgID)) {
-        HAL_Delay(1);
-        auto *p = (uint8_t *) ((uint32_t *) Rxdata + 1);
+#if Can_Send_test == 1
+        uint8_t *temp;
+        HAL_CAN_GetRxMessage(this->hcan, CAN_RX_FIFO0, &RxHeader, temp);
+#endif
+        uint8_t *p = (uint8_t *) ((uint64_t *) Rxdata + 1);
         if (HAL_OK != HAL_CAN_GetRxMessage(this->hcan, CAN_RX_FIFO0, &RxHeader, p)) {
             return CAN_NO_RECEIVE_ERROR;
         }
+
 #if JLINK_DEBUG == 1 && Can_Recev_test == 1
+        SEGGER_RTT_printf(0,"current HAL_CAN_GetRxFifoFillLevel is %d\n",HAL_CAN_GetRxFifoFillLevel(this->hcan, CAN_RX_FIFO0));
         SEGGER_RTT_printf(0, "the oneMS_Encoder_msgID's second ID:\n");
         SEGGER_RTT_printf(0, "StdID = 0x%04x\n", RxHeader.StdId);
         SEGGER_RTT_printf(0, "ExtID = 0x%08x\n", RxHeader.ExtId);
@@ -142,9 +150,19 @@ CanStatusTypeDef Can::CAN_ReadMsg(const uint32_t &EXTID, uint8_t Rxdata[]) const
                 }
             }
         }
-        SEGGER_RTT_printf(0, "--------------------------\n\n");
+        SEGGER_RTT_printf(0, "*******************************\n\n");
 #endif
     }
+    while ( HAL_CAN_GetRxFifoFillLevel(this->hcan, CAN_RX_FIFO0) != 0)
+    {
+        uint8_t *temp;
+        HAL_CAN_GetRxMessage(this->hcan, CAN_RX_FIFO0, &RxHeader, temp);
+    }
+#if JLINK_DEBUG == 1 && Can_Recev_test == 1
+    SEGGER_RTT_printf(0,"%08x current HAL_CAN_GetRxFifoFillLevel is %d\n",EXTID,
+                      HAL_CAN_GetRxFifoFillLevel(this->hcan, CAN_RX_FIFO0));
+    SEGGER_RTT_printf(0, "--------------------------\n\n");
+#endif
     return CAN_OK;
 }
 

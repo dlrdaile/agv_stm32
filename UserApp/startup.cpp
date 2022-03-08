@@ -62,12 +62,22 @@ void stm32TopicCtrl_cb(const communicate_with_stm32::MotorCmd &cmd);
 void stm32ServerCtrl_cb(const communicate_with_stm32::MotorControl::Request &req,
                         communicate_with_stm32::MotorControl::Response &res);
 
+void encoderTimCallbk(TimerHandle_t xTimer);
+
+void batteryTimCallbk(TimerHandle_t xTimer);
+
+void sw2TimCallbk(TimerHandle_t xTimer);
+
+void sw3TimCallbk(TimerHandle_t xTimer);
+
+void rosPubCallbk(TimerHandle_t xTimer);
+
 
 ros::NodeHandle nh;
 //TODO:注意这里是一个测试的注释
-communicate_with_stm32::MotorData mStateData;
+//communicate_with_stm32::MotorData mStateData;
 //ros::Publisher motorState("motorState", &mStateData);
-ros::Publisher motorState("motorState", &mStateData);
+ros::Publisher motorState("motorState", &motor.motor_state.motorData);
 ros::Subscriber<communicate_with_stm32::MotorCmd> motorSub("stm32TopicCtrl", &stm32TopicCtrl_cb);
 
 ros::ServiceServer<communicate_with_stm32::MotorControl::Request,
@@ -83,10 +93,11 @@ extern TaskHandle_t CanNormalTaskHandle;
 extern TaskHandle_t CanUrgentTaskHandle;
 extern TaskHandle_t feedDogTaskHandle;
 extern EventGroupHandle_t feedDogEvent;
-extern TimerHandle_t encoderTimerHandle;
-extern TimerHandle_t batteryTimerHandle;
-extern TimerHandle_t sw2TimerHandle;
-extern TimerHandle_t sw3TimerHandle;
+TimerHandle_t encoderTimerHandle;
+TimerHandle_t batteryTimerHandle;
+TimerHandle_t sw2TimerHandle;
+TimerHandle_t sw3TimerHandle;
+TimerHandle_t rosPubHandle;
 
 void startup() {
 #if JLINK_DEBUG == 1
@@ -102,14 +113,12 @@ void startup() {
         HAL_Delay(1000);
     }
     motor.InitState();
+    HAL_Delay(2);
+    IsPublish = true;
+    nh.spinOnce();
 #if JLINK_DEBUG == 1
     SEGGER_RTT_printf(0, "it is time to start!\n");
 #endif
-    if (!nh.getParam("isPubMStat", &IsPublish, 1, 500)) {
-        nh.logwarn("get param error!set the Pub to false default!");
-        IsPublish = false;
-    }
-    nh.spinOnce();
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
@@ -149,47 +158,6 @@ void timely_detect(TIM_HandleTypeDef *htim) {
 #endif
 }
 
-HAL_StatusTypeDef create_Queue() {
-    canSendQueue = xQueueCreate(10, sizeof(communicate_with_stm32::MotorCmd));
-    canUrgentQueue = xQueueCreate(10, sizeof(communicate_with_stm32::MotorCmd));
-    if (canUrgentQueue != NULL && canSendQueue != NULL) {
-        return HAL_OK;
-    }
-    nh.logerror("the freertos create error!");
-    return HAL_ERROR;
-}
-
-HAL_StatusTypeDef start_timer() {
-    int encoder_period;
-    int battery_period;
-    BaseType_t result;
-    if (!nh.getParam("mEncorderPrd", &encoder_period, 1, 500)) {
-        nh.logwarn("get param error!set the encorder period to 100ms default!");
-        encoder_period = 100;
-    }
-    if (!nh.getParam("mBatteryPrd", &battery_period, 1, 500)) {
-        nh.logwarn("get param error!set the battery period to 1000ms default!");
-        battery_period = 1000;
-    }
-    if (motor.encoderCheckFlag) {
-        result = osTimerStart(encoderTimerHandle, encoder_period);
-    } else {
-        result = xTimerChangePeriod(encoderTimerHandle, encoder_period, 1000);
-    }
-    if (motor.batteryCheckFlag) {
-        if (!result) return HAL_ERROR;
-        result = osTimerStart(batteryTimerHandle, encoder_period);
-    } else {
-        if (!result) return HAL_ERROR;
-        result = xTimerChangePeriod(batteryTimerHandle, battery_period, 1000);
-    }
-    if (!result) return HAL_ERROR;
-    result = xTimerChangePeriod(sw3TimerHandle, 20, 1000);
-    if (!result) return HAL_ERROR;
-    result = xTimerChangePeriod(sw2TimerHandle, 20, 1000);
-    if (!result) return HAL_ERROR;
-    return HAL_OK;
-}
 
 //对c的weak函数进行重写
 extern "C" {
@@ -198,23 +166,21 @@ void rosCallback(void const *argument) {
     TickType_t begin;
     while (true) {
         begin = xTaskGetTickCount();
-        if (IsPublish) {
+/*        if (IsPublish) {
             vPortEnterCritical();
-            memcpy(&mStateData, &motor.motor_state.motorData, sizeof(motorState));
+            motorState.publish(&motor.motor_state.motorData);
             vPortExitCritical();
-            motorState.publish(&mStateData);
-        }
+        }*/
         nh.spinOnce();
         xEventGroupSetBits(feedDogEvent, rosEvent);
-//        xTaskNotify(feedDogTaskHandle,rosEvent,eSetBits);
-        vTaskDelayUntil(&begin, 200);
+        vTaskDelayUntil(&begin, 500);
     }
 }
 
 void CanNormalTCallbk(void const *argument) {
     communicate_with_stm32::MotorCmd normal;
     while (true) {
-        if (xQueueReceive(canUrgentQueue, &normal, 100) == pdTRUE) {
+        if (xQueueReceive(canSendQueue, &normal, 500) == pdTRUE) {
             xSemaphoreTake(canMutex, portMAX_DELAY);
             if (HAL_OK != motor.topic_cmd(normal.cmd, normal.data)) {
                 char temp[100];
@@ -224,7 +190,6 @@ void CanNormalTCallbk(void const *argument) {
             xSemaphoreGive(canMutex);
         }
         xEventGroupSetBits(feedDogEvent, canNormalEvent);
-//        xTaskNotify(feedDogTaskHandle,canNormalEvent,eSetBits);
     }
 }
 
@@ -232,7 +197,7 @@ void CanNormalTCallbk(void const *argument) {
 void CanUrgentCallbk(void const *argument) {
     communicate_with_stm32::MotorCmd urgentcmd;
     while (true) {
-        if (xQueueReceive(canUrgentQueue, &urgentcmd, 100) == pdTRUE) {
+        if (xQueueReceive(canUrgentQueue, &urgentcmd, 500) == pdTRUE) {
             xSemaphoreTake(canMutex, portMAX_DELAY);
             HAL_CAN_AbortTxRequest(motor.mCan->hcan, motor.mCan->TxMailbox);
             switch (urgentcmd.cmd) {
@@ -258,31 +223,19 @@ void CanUrgentCallbk(void const *argument) {
             xSemaphoreGive(canMutex);
         }
         xEventGroupSetBits(feedDogEvent, canUrgentEvent);
-//        xTaskNotify(feedDogTaskHandle,canUrgentEvent,eSetBits);
     }
 }
 
 void feedDogCallbk(void const *argument) {
     HAL_IWDG_Refresh(&hiwdg);
     uint32_t eventSum = (1 << 3) - 1;
-//    uint32_t uNotisfyValue;
     while (true) {
-        if (pdTRUE == xEventGroupWaitBits(feedDogEvent,
-                                          eventSum,
-                                          pdTRUE,
-                                          pdTRUE,
-                                          3000))
-            HAL_IWDG_Refresh(&hiwdg);
-        else {
-            nh.logwarn("the dog is going to dead!");
-        }
-/*        xTaskNotifyWait(0x00,
-                        0xffffffff,
-                        &uNotisfyValue,
-                        3000);
-        if(uNotisfyValue == eventSum){
-            HAL_IWDG_Refresh(&hiwdg);
-        }*/
+        xEventGroupWaitBits(feedDogEvent,
+                            eventSum,
+                            pdTRUE,
+                            pdTRUE,
+                            8000);
+        HAL_IWDG_Refresh(&hiwdg);
     }
 }
 
@@ -312,26 +265,36 @@ unsigned long getRunTimeCounterValue(void) {
 }
 #endif
 
-void encoderTimCallbk(void const *argument) {
-    communicate_with_stm32::MotorCmd encoder_cmd;
-    encoder_cmd.cmd = cmd_getIncSpeed;
-    xQueueOverwrite(canSendQueue, &encoder_cmd);
 }
 
-void batteryTimCallbk(void const *argument) {
+void encoderTimCallbk(TimerHandle_t xTimer) {
+    communicate_with_stm32::MotorCmd encoder_cmd;
+    encoder_cmd.cmd = cmd_getAveSpeed;
+    encoder_cmd.isUrgent = false;
+    xQueueSendToBack(canSendQueue, &encoder_cmd, 100);
+}
+
+void batteryTimCallbk(TimerHandle_t xTimer) {
     communicate_with_stm32::MotorCmd battery_cmd;
     battery_cmd.cmd = cmd_updateBattery;
-    xQueueOverwrite(canSendQueue, &battery_cmd);
+    battery_cmd.isUrgent = false;
+    xQueueSendToBack(canSendQueue, &battery_cmd, 100);
 }
 
-void sw2TimCallbk(void const *argument) {
+void rosPubCallbk(TimerHandle_t xTimer) {
+    if (IsPublish) {
+        vPortEnterCritical();
+        motorState.publish(&motor.motor_state.motorData);
+        vPortExitCritical();
+    }
+}
+
+void sw2TimCallbk(TimerHandle_t xTimer) {
     hsw2.Key_timely_detect();
 }
 
-void sw3TimCallbk(void const *argument) {
+void sw3TimCallbk(TimerHandle_t xTimer) {
     hsw3.Key_timely_detect();
-}
-
 }
 
 
@@ -346,14 +309,8 @@ void stm32TopicCtrl_cb(const communicate_with_stm32::MotorCmd &cmd) {
             nh.loginfo("sucesss send to queue!");
         }
     } else {
-        if (pdTRUE != xQueueOverwrite(canUrgentQueue, &cmd)) {
-            info = "the normal cmd: " + to_string(cmd.cmd) + "send to queue fail!\nwe will try again";
-            nh.logwarn(info.c_str());
-            if (pdTRUE == xQueueOverwrite(canUrgentQueue, &cmd)) {
-                nh.loginfo("try again success!");
-            } else {
-                nh.loginfo("the cmd has been abundant!");
-            }
+        if (pdTRUE != xQueueSendToFront(canSendQueue, &cmd, 100)) {
+            nh.logwarn("a normal cmd send fail");
         }
     }
 }
@@ -364,6 +321,78 @@ void stm32ServerCtrl_cb(const communicate_with_stm32::MotorControl::Request &req
         res.success = true;
     } else
         res.success = false;
+}
+
+
+HAL_StatusTypeDef create_Queue() {
+    canSendQueue = xQueueCreate(20, sizeof(communicate_with_stm32::MotorCmd));
+    canUrgentQueue = xQueueCreate(10, sizeof(communicate_with_stm32::MotorCmd));
+    if (canUrgentQueue != NULL && canSendQueue != NULL) {
+        return HAL_OK;
+    }
+    nh.logerror("the freertos create error!");
+    return HAL_ERROR;
+}
+
+HAL_StatusTypeDef start_timer() {
+    uint16_t encoder_period;
+    uint16_t battery_period;
+    uint16_t sw_period;
+    uint16_t rosPub_period;
+    encoder_period = 100;
+    battery_period = 1000;
+    sw_period = 20;
+    rosPub_period = 1000;
+    encoderTimerHandle = xTimerCreate("checkEncoder",
+                                      encoder_period,
+                                      pdTRUE,
+                                      (void *) 1,
+                                      encoderTimCallbk);
+    batteryTimerHandle = xTimerCreate("checkBattery",
+                                      battery_period,
+                                      pdTRUE,
+                                      (void *) 2,
+                                      batteryTimCallbk);
+    sw2TimerHandle = xTimerCreate("checkSW2",
+                                  sw_period,
+                                  pdTRUE,
+                                  (void *) 3,
+                                  sw2TimCallbk);
+    sw3TimerHandle = xTimerCreate("checkSW3",
+                                  sw_period,
+                                  pdTRUE,
+                                  (void *) 4,
+                                  sw3TimCallbk);
+    rosPubHandle = xTimerCreate("rosPub",
+                                rosPub_period,
+                                pdTRUE,
+                                (void *) 5,
+                                rosPubCallbk);
+    if ((encoderTimerHandle != NULL)
+        && (batteryTimerHandle != NULL)
+        && (sw2TimerHandle != NULL)
+        && (sw3TimerHandle != NULL)
+            ) {
+        if (motor.encoderCheckFlag) {
+            if (!xTimerStart(encoderTimerHandle, 1000)) {
+                return HAL_ERROR;
+            }
+        }
+        if (motor.batteryCheckFlag) {
+            if (!xTimerStart(batteryTimerHandle, 1000)) {
+                return HAL_ERROR;
+            }
+        }
+        if(IsPublish)
+        {
+            if (!xTimerStart(rosPubHandle, 1000)) {
+                return HAL_ERROR;
+            }
+        }
+        return HAL_OK;
+    } else {
+        return HAL_ERROR;
+    }
 }
 
 

@@ -58,47 +58,28 @@ osThreadId CanNormalTaskHandle;
 osThreadId CanUrgentTaskHandle;
 osThreadId feedDogTaskHandle;
 osThreadId keyTaskHandle;
-osTimerId encoderTimerHandle;
-osTimerId batteryTimerHandle;
-osTimerId sw2TimerHandle;
-osTimerId sw3TimerHandle;
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
 
 /* USER CODE END FunctionPrototypes */
 
-void rosCallback(void const *argument);
-
-void CanNormalTCallbk(void const *argument);
-
-void CanUrgentCallbk(void const *argument);
-
-void feedDogCallbk(void const *argument);
-
-void keyCheckCallbk(void const *argument);
-
-void encoderTimCallbk(void const *argument);
-
-void batteryTimCallbk(void const *argument);
-
-void sw2TimCallbk(void const *argument);
-
-void sw3TimCallbk(void const *argument);
+void rosCallback(void const * argument);
+void CanNormalTCallbk(void const * argument);
+void CanUrgentCallbk(void const * argument);
+void feedDogCallbk(void const * argument);
+void keyCheckCallbk(void const * argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
 /* GetIdleTaskMemory prototype (linked to static allocation support) */
-void vApplicationGetIdleTaskMemory(StaticTask_t **ppxIdleTaskTCBBuffer, StackType_t **ppxIdleTaskStackBuffer,
-                                   uint32_t *pulIdleTaskStackSize);
+void vApplicationGetIdleTaskMemory( StaticTask_t **ppxIdleTaskTCBBuffer, StackType_t **ppxIdleTaskStackBuffer, uint32_t *pulIdleTaskStackSize );
 
 /* GetTimerTaskMemory prototype (linked to static allocation support) */
-void vApplicationGetTimerTaskMemory(StaticTask_t **ppxTimerTaskTCBBuffer, StackType_t **ppxTimerTaskStackBuffer,
-                                    uint32_t *pulTimerTaskStackSize);
+void vApplicationGetTimerTaskMemory( StaticTask_t **ppxTimerTaskTCBBuffer, StackType_t **ppxTimerTaskStackBuffer, uint32_t *pulTimerTaskStackSize );
 
 /* Hook prototypes */
 void configureTimerForRunTimeStats(void);
-
 unsigned long getRunTimeCounterValue(void);
 
 /* USER CODE BEGIN 1 */
@@ -144,17 +125,17 @@ void vApplicationGetTimerTaskMemory(StaticTask_t **ppxTimerTaskTCBBuffer, StackT
   * @retval None
   */
 void MX_FREERTOS_Init(void) {
-    /* USER CODE BEGIN Init */
+  /* USER CODE BEGIN Init */
     feedDogEvent = xEventGroupCreate();
-    if (canMutex == NULL) {
+    if (feedDogEvent == NULL) {
 #if JLINK_DEBUG == 1
         SEGGER_RTT_printf(0, "eventgroup create error!\n");
 #endif
         while (1);
     }
-    /* USER CODE END Init */
+  /* USER CODE END Init */
 
-    /* USER CODE BEGIN RTOS_MUTEX */
+  /* USER CODE BEGIN RTOS_MUTEX */
     /* add mutexes, ... */
     canMutex = xSemaphoreCreateMutex();
     if (canMutex == NULL) {
@@ -163,35 +144,23 @@ void MX_FREERTOS_Init(void) {
 #endif
         while (1);
     }
-    /* USER CODE END RTOS_MUTEX */
+  /* USER CODE END RTOS_MUTEX */
 
-    /* USER CODE BEGIN RTOS_SEMAPHORES */
+  /* USER CODE BEGIN RTOS_SEMAPHORES */
     /* add semaphores, ... */
-    /* USER CODE END RTOS_SEMAPHORES */
+  /* USER CODE END RTOS_SEMAPHORES */
 
-    /* Create the timer(s) */
-    /* definition and creation of encoderTimer */
-    osTimerDef(encoderTimer, encoderTimCallbk);
-    encoderTimerHandle = osTimerCreate(osTimer(encoderTimer), osTimerPeriodic, NULL);
-
-    /* definition and creation of batteryTimer */
-    osTimerDef(batteryTimer, batteryTimCallbk);
-    batteryTimerHandle = osTimerCreate(osTimer(batteryTimer), osTimerPeriodic, NULL);
-
-    /* definition and creation of sw2Timer */
-    osTimerDef(sw2Timer, sw2TimCallbk);
-    sw2TimerHandle = osTimerCreate(osTimer(sw2Timer), osTimerPeriodic, NULL);
-
-    /* definition and creation of sw3Timer */
-    osTimerDef(sw3Timer, sw3TimCallbk);
-    sw3TimerHandle = osTimerCreate(osTimer(sw3Timer), osTimerPeriodic, NULL);
-
-    /* USER CODE BEGIN RTOS_TIMERS */
-    start_timer();
+  /* USER CODE BEGIN RTOS_TIMERS */
+    if(start_timer() != HAL_OK){
+#if JLINK_DEBUG == 1
+        SEGGER_RTT_printf(0, "time create error!\n");
+#endif
+        while (1);
+    }
     /* start timers, add new ones, ... */
-    /* USER CODE END RTOS_TIMERS */
+  /* USER CODE END RTOS_TIMERS */
 
-    /* USER CODE BEGIN RTOS_QUEUES */
+  /* USER CODE BEGIN RTOS_QUEUES */
     /* add queues, ... */
     if (create_Queue() != HAL_OK) {
 #if JLINK_DEBUG == 1
@@ -199,32 +168,33 @@ void MX_FREERTOS_Init(void) {
 #endif
         while (1);
     }
-    /* USER CODE END RTOS_QUEUES */
+  /* USER CODE END RTOS_QUEUES */
 
-    /* Create the thread(s) */
-    /* definition and creation of rosTask */
-    osThreadDef(rosTask, rosCallback, osPriorityNormal, 0, 2048);
-    rosTaskHandle = osThreadCreate(osThread(rosTask), NULL);
+  /* Create the thread(s) */
+  /* definition and creation of rosTask */
+  osThreadDef(rosTask, rosCallback, osPriorityHigh, 0, 2048);
+  rosTaskHandle = osThreadCreate(osThread(rosTask), NULL);
 
-    /* definition and creation of CanNormalTask */
-    osThreadDef(CanNormalTask, CanNormalTCallbk, osPriorityLow, 0, 512);
-    CanNormalTaskHandle = osThreadCreate(osThread(CanNormalTask), NULL);
+  /* definition and creation of CanNormalTask */
+  osThreadDef(CanNormalTask, CanNormalTCallbk, osPriorityNormal, 0, 512);
+  CanNormalTaskHandle = osThreadCreate(osThread(CanNormalTask), NULL);
 
-    /* definition and creation of CanUrgentTask */
-    osThreadDef(CanUrgentTask, CanUrgentCallbk, osPriorityNormal, 0, 512);
-    CanUrgentTaskHandle = osThreadCreate(osThread(CanUrgentTask), NULL);
+  /* definition and creation of CanUrgentTask */
+  osThreadDef(CanUrgentTask, CanUrgentCallbk, osPriorityAboveNormal, 0, 512);
+  CanUrgentTaskHandle = osThreadCreate(osThread(CanUrgentTask), NULL);
 
-    /* definition and creation of feedDogTask */
-    osThreadDef(feedDogTask, feedDogCallbk, osPriorityHigh, 0, 128);
-    feedDogTaskHandle = osThreadCreate(osThread(feedDogTask), NULL);
+  /* definition and creation of feedDogTask */
+  osThreadDef(feedDogTask, feedDogCallbk, osPriorityRealtime, 0, 128);
+  feedDogTaskHandle = osThreadCreate(osThread(feedDogTask), NULL);
 
-    /* definition and creation of keyTask */
-    osThreadDef(keyTask, keyCheckCallbk, osPriorityAboveNormal, 0, 128);
-    keyTaskHandle = osThreadCreate(osThread(keyTask), NULL);
+  /* definition and creation of keyTask */
+  osThreadDef(keyTask, keyCheckCallbk, osPriorityAboveNormal, 0, 128);
+  keyTaskHandle = osThreadCreate(osThread(keyTask), NULL);
 
-    /* USER CODE BEGIN RTOS_THREADS */
+  /* USER CODE BEGIN RTOS_THREADS */
     /* add threads, ... */
-    /* USER CODE END RTOS_THREADS */
+    SEGGER_RTT_printf(0,"start!");
+  /* USER CODE END RTOS_THREADS */
 
 }
 
@@ -235,13 +205,14 @@ void MX_FREERTOS_Init(void) {
   * @retval None
   */
 /* USER CODE END Header_rosCallback */
-__weak void rosCallback(void const *argument) {
-    /* USER CODE BEGIN rosCallback */
+__weak void rosCallback(void const * argument)
+{
+  /* USER CODE BEGIN rosCallback */
     /* Infinite loop */
     for (;;) {
         osDelay(1);
     }
-    /* USER CODE END rosCallback */
+  /* USER CODE END rosCallback */
 }
 
 /* USER CODE BEGIN Header_CanNormalTCallbk */
@@ -251,13 +222,14 @@ __weak void rosCallback(void const *argument) {
 * @retval None
 */
 /* USER CODE END Header_CanNormalTCallbk */
-__weak void CanNormalTCallbk(void const *argument) {
-    /* USER CODE BEGIN CanNormalTCallbk */
+__weak void CanNormalTCallbk(void const * argument)
+{
+  /* USER CODE BEGIN CanNormalTCallbk */
     /* Infinite loop */
     for (;;) {
         osDelay(1);
     }
-    /* USER CODE END CanNormalTCallbk */
+  /* USER CODE END CanNormalTCallbk */
 }
 
 /* USER CODE BEGIN Header_CanUrgentCallbk */
@@ -267,13 +239,14 @@ __weak void CanNormalTCallbk(void const *argument) {
 * @retval None
 */
 /* USER CODE END Header_CanUrgentCallbk */
-__weak void CanUrgentCallbk(void const *argument) {
-    /* USER CODE BEGIN CanUrgentCallbk */
+__weak void CanUrgentCallbk(void const * argument)
+{
+  /* USER CODE BEGIN CanUrgentCallbk */
     /* Infinite loop */
     for (;;) {
         osDelay(1);
     }
-    /* USER CODE END CanUrgentCallbk */
+  /* USER CODE END CanUrgentCallbk */
 }
 
 /* USER CODE BEGIN Header_feedDogCallbk */
@@ -283,13 +256,14 @@ __weak void CanUrgentCallbk(void const *argument) {
 * @retval None
 */
 /* USER CODE END Header_feedDogCallbk */
-__weak void feedDogCallbk(void const *argument) {
-    /* USER CODE BEGIN feedDogCallbk */
+__weak void feedDogCallbk(void const * argument)
+{
+  /* USER CODE BEGIN feedDogCallbk */
     /* Infinite loop */
     for (;;) {
         osDelay(1);
     }
-    /* USER CODE END feedDogCallbk */
+  /* USER CODE END feedDogCallbk */
 }
 
 /* USER CODE BEGIN Header_keyCheckCallbk */
@@ -299,41 +273,14 @@ __weak void feedDogCallbk(void const *argument) {
 * @retval None
 */
 /* USER CODE END Header_keyCheckCallbk */
-__weak void keyCheckCallbk(void const *argument) {
-    /* USER CODE BEGIN keyCheckCallbk */
+__weak void keyCheckCallbk(void const * argument)
+{
+  /* USER CODE BEGIN keyCheckCallbk */
     /* Infinite loop */
     for (;;) {
         osDelay(1);
     }
-    /* USER CODE END keyCheckCallbk */
-}
-
-/* encoderTimCallbk function */
-__weak void encoderTimCallbk(void const *argument) {
-    /* USER CODE BEGIN encoderTimCallbk */
-
-    /* USER CODE END encoderTimCallbk */
-}
-
-/* batteryTimCallbk function */
-__weak void batteryTimCallbk(void const *argument) {
-    /* USER CODE BEGIN batteryTimCallbk */
-
-    /* USER CODE END batteryTimCallbk */
-}
-
-/* sw2TimCallbk function */
-__weak void sw2TimCallbk(void const *argument) {
-    /* USER CODE BEGIN sw2TimCallbk */
-
-    /* USER CODE END sw2TimCallbk */
-}
-
-/* sw3TimCallbk function */
-__weak void sw3TimCallbk(void const *argument) {
-    /* USER CODE BEGIN sw3TimCallbk */
-
-    /* USER CODE END sw3TimCallbk */
+  /* USER CODE END keyCheckCallbk */
 }
 
 /* Private application code --------------------------------------------------*/
