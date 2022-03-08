@@ -30,7 +30,6 @@ extern SemaphoreHandle_t canMutex;
 extern TimerHandle_t encoderTimerHandle;
 extern TimerHandle_t batteryTimerHandle;
 extern TimerHandle_t rosPubHandle;
-extern bool IsPublish;
 
 HAL_StatusTypeDef Motor::verifyReceive(const CanStatusTypeDef &transtatus, const uint32_t &ExtID) {
     string name;
@@ -84,7 +83,7 @@ HAL_StatusTypeDef Motor::verifyReceive(const CanStatusTypeDef &transtatus, const
 
 Motor::Motor(CAN_HandleTypeDef &hcan) {
     this->mCan = new Can(hcan);
-    if (this->encoderCheckFlag) {
+    if (this->encoderCtrl.IsOpen) {
         this->motor_state.motorData.Aveduration.fromSec(0);
     }
 }
@@ -206,8 +205,6 @@ HAL_StatusTypeDef Motor::stop() {
 }
 
 HAL_StatusTypeDef Motor::InitState() {
-    this->encoderCheckFlag = true;
-    this->batteryCheckFlag = true;
     if ((this->mCan->CAN_Init() != HAL_OK)
         || (this->clear_encoder() != HAL_OK)
         || (this->stop() != HAL_OK)
@@ -216,7 +213,7 @@ HAL_StatusTypeDef Motor::InitState() {
     }
     this->motor_state.motorData.Avetime = nh.now();
     this->motor_state.motorData.Inctime = this->motor_state.motorData.Avetime;
-    if (!this->encoderCheckFlag) {
+    if (!this->encoderCtrl.IsOpen) {
         this->motor_state.motorData.Aveduration.fromSec(0);
     }
     if (HAL_OK == this->update_battery()) {
@@ -235,7 +232,7 @@ HAL_StatusTypeDef Motor::update_encoderdata() {
         this->motor_state.current_encData.check_time = xTaskGetTickCount();
         memcpy(this->motor_state.current_encData.encoder_data, this->CanRxBuffer, 16);
         this->motor_state.motorData.Avetime = nh.now();
-        if (this->encoderCheckFlag) {
+        if (this->encoderCtrl.IsOpen) {
             return this->clear_encoder();
         }
         return HAL_OK;
@@ -250,7 +247,7 @@ HAL_StatusTypeDef Motor::clear_encoder() {
 #endif
     HAL_Delay(taskdelaytick);
     if (HAL_OK == this->verifyReceive(result, ClearEncoder_msgID)) {
-        if (this->encoderCheckFlag) {
+        if (this->encoderCtrl.IsOpen) {
             this->motor_state.last_zero_tick = this->motor_state.current_zero_tick;
             this->motor_state.current_zero_tick = xTaskGetTickCount();
         }
@@ -309,7 +306,7 @@ HAL_StatusTypeDef Motor::topic_cmd(const uint8_t &cmd, const int16_t *TxData) {
             }
             break;
         case cmd_getAveSpeed:
-            if (this->encoderCheckFlag) {
+            if (this->encoderCtrl.IsOpen) {
                 cmd_result = this->update_encoderdata();
                 if (cmd_result == HAL_OK) {
                     float duration = (this->motor_state.current_encData.check_time -
@@ -372,7 +369,8 @@ HAL_StatusTypeDef Motor::server_cmd(const communicate_with_stm32::MotorControl::
     HAL_StatusTypeDef cmd_result = HAL_OK;
     switch (req.cmd) {
         case cmd_checkAveSpeed:
-            if (this->encoderCheckFlag) {
+            if (this->encoderCtrl.IsOpen) {
+                //若1秒钟内没有得到互斥锁，则返回错误
                 if (xSemaphoreTake(canMutex, 1000) == pdTRUE) {
                     cmd_result = this->update_encoderdata();
                     if (cmd_result == HAL_OK) {
@@ -471,12 +469,13 @@ HAL_StatusTypeDef Motor::server_cmd(const communicate_with_stm32::MotorControl::
             break;
         case cmd_startupEncoder:
             if (req.Key) {
-                if (pdTRUE == xSemaphoreTake(canMutex, 500)) {
+                if (pdTRUE == xSemaphoreTake(canMutex, 1000)) {
                     cmd_result = this->clear_encoder();
                     if (cmd_result == HAL_OK) {
                         xTimerChangePeriod(encoderTimerHandle, req.Period, 100);
                         xTimerReset(encoderTimerHandle, 100);
-                        this->encoderCheckFlag = true;
+                        this->encoderCtrl.IsOpen = true;
+                        this->encoderCtrl.freq = req.Period;
                         nh.loginfo("timely Encoder has been opened!");
                     }
                     xSemaphoreGive(canMutex);
@@ -488,33 +487,37 @@ HAL_StatusTypeDef Motor::server_cmd(const communicate_with_stm32::MotorControl::
             } else {
                 this->motor_state.motorData.Aveduration.fromSec(0);
                 xTimerStop(encoderTimerHandle, portMAX_DELAY);
-                this->encoderCheckFlag = false;
+                this->encoderCtrl.IsOpen = false;
                 nh.loginfo("timely Encoder has been closed!");
                 cmd_result = HAL_OK;
             }
             break;
         case cmd_startupBattery:
             if (req.Key) {
-                if (xTimerChangePeriod(batteryTimerHandle, req.Period, 100) && xTimerReset(batteryTimerHandle, 100))
-                    this->batteryCheckFlag = true;
+                if (xTimerChangePeriod(batteryTimerHandle, req.Period, 100) && xTimerReset(batteryTimerHandle, 100)) {
+                    this->batteryCtrl.IsOpen = true;
+                    this->batteryCtrl.freq = req.Period;
+                }
                 else {
                     cmd_result = HAL_ERROR;
                 }
             } else {
                 xTimerStop(batteryTimerHandle, portMAX_DELAY);
-                this->batteryCheckFlag = false;
+                this->batteryCtrl.IsOpen = false;
             }
             break;
         case cmd_controlPub:
             if (req.Key) {
-                if (xTimerChangePeriod(rosPubHandle, req.Period, 100) && xTimerReset(rosPubHandle, 100))
-                    IsPublish = true;
+                if (xTimerChangePeriod(rosPubHandle, req.Period, 100) && xTimerReset(rosPubHandle, 100)) {
+                    this->rosPubCtrl.IsOpen = true;
+                    this->rosPubCtrl.freq = req.Period;
+                }
                 else {
                     cmd_result = HAL_ERROR;
                 }
             } else {
                 if(xTimerStop(rosPubHandle, 100))
-                    IsPublish = false;
+                    this->rosPubCtrl.IsOpen = false;
                 else{
                     cmd_result = HAL_ERROR;
                 }

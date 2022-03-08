@@ -42,6 +42,11 @@ enum {
     canNormalEvent = 1 << 1,
     canUrgentEvent = 1 << 2
 };
+enum {
+    encoderInitFlag = 0,
+    batteryInitFlag = 1 << 1,
+    rosPUbInitFlag = 1 << 2
+};
 
 //用户变量初始化区
 Key hsw2(SW2_GPIO_Port, SW2_Pin);
@@ -52,7 +57,6 @@ Led hled1(LED1_GPIO_Port, LED1_Pin);
 
 Motor motor(hcan1);
 
-bool canSendFlag = false;
 #if (configGENERATE_RUN_TIME_STATS == 1) && (JLINK_DEBUG == 1)
 volatile unsigned long long run_time_stats_tick;
 #endif
@@ -74,16 +78,13 @@ void rosPubCallbk(TimerHandle_t xTimer);
 
 
 ros::NodeHandle nh;
-//TODO:注意这里是一个测试的注释
-//communicate_with_stm32::MotorData mStateData;
-//ros::Publisher motorState("motorState", &mStateData);
 ros::Publisher motorState("motorState", &motor.motor_state.motorData);
 ros::Subscriber<communicate_with_stm32::MotorCmd> motorSub("stm32TopicCtrl", &stm32TopicCtrl_cb);
 
 ros::ServiceServer<communicate_with_stm32::MotorControl::Request,
         communicate_with_stm32::MotorControl::Response> motorSrv("stm32SeverCtrl", &stm32ServerCtrl_cb);
 
-bool IsPublish = false;
+bool isInitial = false;
 
 extern xQueueHandle canSendQueue;
 extern xQueueHandle canUrgentQueue;
@@ -113,9 +114,12 @@ void startup() {
         HAL_Delay(1000);
     }
     motor.InitState();
-    HAL_Delay(2);
-    IsPublish = true;
-    nh.spinOnce();
+    nh.loginfo("please publish a topic cmd ID greater than 100 to initial the system!");
+    while (!isInitial){
+        nh.spinOnce();
+        HAL_IWDG_Refresh(&hiwdg);
+        HAL_Delay(500);
+    }
 #if JLINK_DEBUG == 1
     SEGGER_RTT_printf(0, "it is time to start!\n");
 #endif
@@ -166,21 +170,16 @@ void rosCallback(void const *argument) {
     TickType_t begin;
     while (true) {
         begin = xTaskGetTickCount();
-/*        if (IsPublish) {
-            vPortEnterCritical();
-            motorState.publish(&motor.motor_state.motorData);
-            vPortExitCritical();
-        }*/
         nh.spinOnce();
         xEventGroupSetBits(feedDogEvent, rosEvent);
-        vTaskDelayUntil(&begin, 500);
+        vTaskDelayUntil(&begin, 300);
     }
 }
 
 void CanNormalTCallbk(void const *argument) {
     communicate_with_stm32::MotorCmd normal;
     while (true) {
-        if (xQueueReceive(canSendQueue, &normal, 500) == pdTRUE) {
+        if (xQueueReceive(canSendQueue, &normal, 100) == pdTRUE) {
             xSemaphoreTake(canMutex, portMAX_DELAY);
             if (HAL_OK != motor.topic_cmd(normal.cmd, normal.data)) {
                 char temp[100];
@@ -197,7 +196,7 @@ void CanNormalTCallbk(void const *argument) {
 void CanUrgentCallbk(void const *argument) {
     communicate_with_stm32::MotorCmd urgentcmd;
     while (true) {
-        if (xQueueReceive(canUrgentQueue, &urgentcmd, 500) == pdTRUE) {
+        if (xQueueReceive(canUrgentQueue, &urgentcmd, 100) == pdTRUE) {
             xSemaphoreTake(canMutex, portMAX_DELAY);
             HAL_CAN_AbortTxRequest(motor.mCan->hcan, motor.mCan->TxMailbox);
             switch (urgentcmd.cmd) {
@@ -282,7 +281,7 @@ void batteryTimCallbk(TimerHandle_t xTimer) {
 }
 
 void rosPubCallbk(TimerHandle_t xTimer) {
-    if (IsPublish) {
+    if (motor.rosPubCtrl.IsOpen) {
         vPortEnterCritical();
         motorState.publish(&motor.motor_state.motorData);
         vPortExitCritical();
@@ -299,28 +298,74 @@ void sw3TimCallbk(TimerHandle_t xTimer) {
 
 
 void stm32TopicCtrl_cb(const communicate_with_stm32::MotorCmd &cmd) {
-    string info;
-    if (cmd.isUrgent) {
-        if (pdTRUE != xQueueSendToFront(canUrgentQueue, &cmd, 100)) {
-            info = "the important cmd: " + to_string(cmd.cmd) +
-                   "send to queue fail!\nwe will try to send until success";
-            nh.logfatal(info.c_str());
-            while (pdTRUE != xQueueSendToFront(canUrgentQueue, &cmd, 0));
-            nh.loginfo("sucesss send to queue!");
+    if(!isInitial)
+    {
+        if(cmd.cmd <= 100)
+        {
+            nh.logwarn("please input a cmd greater than 100 to ensure the init!");
         }
-    } else {
-        if (pdTRUE != xQueueSendToFront(canSendQueue, &cmd, 100)) {
-            nh.logwarn("a normal cmd send fail");
+        else
+        {
+            uint8_t openFlag = cmd.cmd - 100;
+            if(openFlag & encoderInitFlag)
+            {
+                motor.encoderCtrl.IsOpen = true;
+                motor.encoderCtrl.freq = cmd.data[0];
+            }
+            else
+            {
+                motor.encoderCtrl.IsOpen = false;
+                motor.encoderCtrl.freq = 500;
+            }
+            if(openFlag & batteryInitFlag)
+            {
+                motor.batteryCtrl.IsOpen = true;
+                motor.batteryCtrl.freq = cmd.data[1];
+            }
+            else
+            {
+                motor.batteryCtrl.IsOpen = false;
+                motor.batteryCtrl.freq = 1000;
+            }
+            if(openFlag & rosPUbInitFlag)
+            {
+                motor.rosPubCtrl.IsOpen = true;
+                motor.rosPubCtrl.freq = cmd.data[2];
+            }
+            else
+            {
+                motor.rosPubCtrl.IsOpen = false;
+                motor.rosPubCtrl.freq = 1000;
+            }
+            isInitial = true;
+            nh.loginfo("init the system success!");
         }
     }
+    else{
+        string info;
+        if (cmd.isUrgent) {
+            if (pdTRUE != xQueueSendToFront(canUrgentQueue, &cmd, 100)) {
+                info = "the important cmd: " + to_string(cmd.cmd) +
+                       "send to queue fail!\nwe will try to send until success";
+                nh.logfatal(info.c_str());
+                while (pdTRUE != xQueueSendToFront(canUrgentQueue, &cmd, 0));
+                nh.loginfo("sucesss send to queue!");
+            }
+        } else {
+            if (pdTRUE != xQueueSendToFront(canSendQueue, &cmd, 100)) {
+                nh.logwarn("a normal cmd send fail");
+            }
+        }
+    }
+
 }
 
 void stm32ServerCtrl_cb(const communicate_with_stm32::MotorControl::Request &req,
                         communicate_with_stm32::MotorControl::Response &res) {
-    if (motor.server_cmd(req, res) == HAL_OK) {
-        res.success = true;
-    } else
-        res.success = false;
+        if (motor.server_cmd(req, res) == HAL_OK) {
+            res.success = true;
+        } else
+            res.success = false;
 }
 
 
@@ -335,21 +380,16 @@ HAL_StatusTypeDef create_Queue() {
 }
 
 HAL_StatusTypeDef start_timer() {
-    uint16_t encoder_period;
-    uint16_t battery_period;
     uint16_t sw_period;
-    uint16_t rosPub_period;
-    encoder_period = 100;
-    battery_period = 1000;
     sw_period = 20;
-    rosPub_period = 1000;
+
     encoderTimerHandle = xTimerCreate("checkEncoder",
-                                      encoder_period,
+                                      motor.encoderCtrl.freq,
                                       pdTRUE,
                                       (void *) 1,
                                       encoderTimCallbk);
     batteryTimerHandle = xTimerCreate("checkBattery",
-                                      battery_period,
+                                      motor.batteryCtrl.freq,
                                       pdTRUE,
                                       (void *) 2,
                                       batteryTimCallbk);
@@ -364,7 +404,7 @@ HAL_StatusTypeDef start_timer() {
                                   (void *) 4,
                                   sw3TimCallbk);
     rosPubHandle = xTimerCreate("rosPub",
-                                rosPub_period,
+                                motor.rosPubCtrl.freq,
                                 pdTRUE,
                                 (void *) 5,
                                 rosPubCallbk);
@@ -373,17 +413,17 @@ HAL_StatusTypeDef start_timer() {
         && (sw2TimerHandle != NULL)
         && (sw3TimerHandle != NULL)
             ) {
-        if (motor.encoderCheckFlag) {
+        if (motor.encoderCtrl.IsOpen) {
             if (!xTimerStart(encoderTimerHandle, 1000)) {
                 return HAL_ERROR;
             }
         }
-        if (motor.batteryCheckFlag) {
+        if (motor.batteryCtrl.IsOpen) {
             if (!xTimerStart(batteryTimerHandle, 1000)) {
                 return HAL_ERROR;
             }
         }
-        if(IsPublish)
+        if(motor.rosPubCtrl.IsOpen)
         {
             if (!xTimerStart(rosPubHandle, 1000)) {
                 return HAL_ERROR;

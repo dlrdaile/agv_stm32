@@ -28,6 +28,12 @@ typedef struct {
 } EncoderData_TypeDef;
 
 typedef struct {
+bool IsOpen;
+uint16_t freq;
+} Control_TypeDef;
+
+
+typedef struct {
     int16_t setted_speed[4];
     int8_t oneMs_encoder[4];
     TickType_t current_zero_tick;
@@ -158,8 +164,9 @@ public:
     CarState_TypeDef motor_state;
     uint8_t CanRxBuffer[16];
     Can *mCan;
-    bool encoderCheckFlag;
-    bool batteryCheckFlag;
+    Control_TypeDef encoderCtrl;
+    Control_TypeDef batteryCtrl;
+    Control_TypeDef rosPubCtrl;
 private:
     CanStatusTypeDef result;
 };
