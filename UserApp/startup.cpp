@@ -43,7 +43,7 @@ enum {
     canUrgentEvent = 1 << 2
 };
 enum {
-    encoderInitFlag = 0,
+    encoderInitFlag = 1,
     batteryInitFlag = 1 << 1,
     rosPUbInitFlag = 1 << 2
 };
@@ -113,13 +113,13 @@ void startup() {
         nh.spinOnce();
         HAL_Delay(1000);
     }
-    motor.InitState();
     nh.loginfo("please publish a topic cmd ID greater than 100 to initial the system!");
     while (!isInitial){
         nh.spinOnce();
         HAL_IWDG_Refresh(&hiwdg);
         HAL_Delay(500);
     }
+    motor.InitState();
 #if JLINK_DEBUG == 1
     SEGGER_RTT_printf(0, "it is time to start!\n");
 #endif
@@ -434,9 +434,3 @@ HAL_StatusTypeDef start_timer() {
         return HAL_ERROR;
     }
 }
-
-
-
-
-
-

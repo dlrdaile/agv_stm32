@@ -158,6 +158,12 @@ public:
 
 private:
 
+    /**
+     * @brief 对Can的接收数据做验证，并当接收的过程出错时显示错误原因
+     * @param transtatus
+     * @param ExtID
+     * @return
+     */
     HAL_StatusTypeDef verifyReceive(const CanStatusTypeDef &transtatus, const uint32_t &ExtID);
 
 public:
@@ -169,6 +175,8 @@ public:
     Control_TypeDef rosPubCtrl;
 private:
     CanStatusTypeDef result;
+    const ros::Duration timeOffSet;
+    const ros::Duration entimeOffSet;
 };
 
 
