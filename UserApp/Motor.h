@@ -64,7 +64,8 @@ typedef enum {
     cmd_checkbattery,
     cmd_startupBattery,
     cmd_startupEncoder,
-    cmd_controlPub
+    cmd_controlPub,
+    cmd_checkSettedSpeed
 } server_cmd_set;
 
 
