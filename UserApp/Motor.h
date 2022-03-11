@@ -36,8 +36,7 @@ uint16_t freq;
 typedef struct {
     int16_t setted_speed[4];
     int8_t oneMs_encoder[4];
-    TickType_t current_zero_tick;
-    TickType_t last_zero_tick;
+    EncoderData_TypeDef last_encData;
     EncoderData_TypeDef current_encData;
     communicate_with_stm32::MotorData motorData;
 } CarState_TypeDef;

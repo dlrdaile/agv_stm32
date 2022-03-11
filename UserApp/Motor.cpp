@@ -21,7 +21,6 @@
 
 #include "ros.h"
 #include "memory.h"
-#include "cstdio"
 #include "semphr.h"
 
 #define taskdelaytick 1
@@ -122,7 +121,12 @@ HAL_StatusTypeDef Motor::setSpeed(int16_t v1, int16_t v2, int16_t v3, int16_t v4
     if (this->verifyReceive(result, setSpeed_msgID) != HAL_OK) {
         return HAL_ERROR;
     }
-    memcpy(this->motor_state.setted_speed, speed, 8);
+    extern bool isInitial;
+    if (isInitial) {
+        vPortEnterCritical();
+        memcpy(this->motor_state.setted_speed, speed, 8);
+        vPortExitCritical();
+    }
     return HAL_OK;
 }
 
@@ -169,8 +173,10 @@ HAL_StatusTypeDef Motor::update_battery() {
         SEGGER_RTT_printf(0, "the receive data is %d\n", *((uint32_t *) this->CanRxBuffer));
 #endif
         this->motor_state.motorData.batteryInfo.mVoltage = *((uint32_t *) this->CanRxBuffer);
-        this->motor_state.motorData.batteryInfo.time = nh.now();
-        this->motor_state.motorData.batteryInfo.time -= this->timeOffSet;
+        if (this->batteryCtrl.IsOpen) {
+            this->motor_state.motorData.batteryInfo.time = nh.now();
+            this->motor_state.motorData.batteryInfo.time -= this->timeOffSet;
+        }
         return HAL_OK;
     } else
         return HAL_ERROR;
@@ -198,34 +204,40 @@ HAL_StatusTypeDef Motor::stop() {
 }
 
 HAL_StatusTypeDef Motor::InitState() {
-    if ((this->mCan->CAN_Init() != HAL_OK)
-        || (this->clear_encoder() != HAL_OK)
-        || (this->stop() != HAL_OK)
+    if (
+            (this->mCan->CAN_Init() != HAL_OK)
+            || (this->stop() != HAL_OK)
+            || (this->update_battery() != HAL_OK)
             ) {
         return HAL_ERROR;
     }
-    this->motor_state.motorData.aveInfo.time = nh.now();
-    this->motor_state.motorData.incInfo.time = this->motor_state.motorData.aveInfo.time;
-    if (HAL_OK == this->update_battery()) {
-        return HAL_OK;
-    } else
-        return HAL_ERROR;
+    return HAL_OK;
 }
 
 HAL_StatusTypeDef Motor::update_encoderdata() {
     result = mCan->CAN_SendMsg(EncoderData_msgID, NULL, DLSEND_48);
 #if JLINK_DEBUG == 1
-    SEGGER_RTT_printf(0, "the update_oneMs_encoder msgID is:0x%08x\n", EncoderData_msgID);
+    SEGGER_RTT_printf(0, "the update_encoderdata msgID is:0x%08x\n", EncoderData_msgID);
 #endif
     HAL_Delay(encoder_taskdelay);
     if (HAL_OK == this->verifyReceive(result, EncoderData_msgID)) {
-        this->motor_state.current_encData.check_time = xTaskGetTickCount() - encoder_taskdelay;
+        vPortEnterCritical();
+        this->motor_state.last_encData.check_time = this->motor_state.current_encData.check_time;
+        memcpy(this->motor_state.last_encData.encoder_data, this->motor_state.current_encData.encoder_data, 16);
+        this->motor_state.current_encData.check_time = HAL_GetTick() - encoder_taskdelay;
         memcpy(this->motor_state.current_encData.encoder_data, this->CanRxBuffer, 16);
         this->motor_state.motorData.aveInfo.time = nh.now();
         this->motor_state.motorData.aveInfo.time -= this->entimeOffSet;
-        if (this->encoderCtrl.IsOpen) {
-            return this->clear_encoder();
-        }
+        //TODO:考虑是否要避免溢出
+       /* for (int i = 0; i < 4; ++i) {
+            uint32_t out = 1 << 31;
+            if(this->motor_state.current_encData.encoder_data[i] >= (out - 1) || this->motor_state.current_encData.encoder_data[i] <= -65000)
+            {
+                this->clear_encoder();
+                break;
+            }
+        }*/
+        vPortExitCritical();
         return HAL_OK;
     }
     return HAL_ERROR;
@@ -238,10 +250,12 @@ HAL_StatusTypeDef Motor::clear_encoder() {
 #endif
     HAL_Delay(taskdelaytick);
     if (HAL_OK == this->verifyReceive(result, ClearEncoder_msgID)) {
-        if (this->encoderCtrl.IsOpen) {
-            this->motor_state.last_zero_tick = this->motor_state.current_zero_tick;
-            this->motor_state.current_zero_tick = xTaskGetTickCount() - taskdelaytick;
-        }
+        memset(this->motor_state.current_encData.encoder_data, 0,
+               sizeof(this->motor_state.current_encData.encoder_data));
+        memset(this->motor_state.last_encData.encoder_data, 0,
+               sizeof(this->motor_state.current_encData.encoder_data));
+        this->motor_state.current_encData.check_time = HAL_GetTick() - taskdelaytick;
+        this->motor_state.last_encData.check_time = HAL_GetTick() - taskdelaytick;
         return HAL_OK;
     } else
         return HAL_ERROR;
@@ -290,10 +304,7 @@ HAL_StatusTypeDef Motor::topic_cmd(const uint8_t &cmd, const int16_t *TxData) {
             cmd_result = this->update_oneMs_encoder();
             if (cmd_result == HAL_OK) {
                 vPortEnterCritical();
-/*                for (int i = 0; i < 4; ++i) {
-                    this->motor_state.motorData.incInfo.encoderData[i] = this->motor_state.oneMs_encoder[i];
-                }*/
-                memcpy(this->motor_state.motorData.incInfo.encoderData,this->motor_state.oneMs_encoder,4);
+                memcpy(this->motor_state.motorData.incInfo.encoderData, this->motor_state.oneMs_encoder, 4);
                 vPortExitCritical();
                 temp = "the IncSpeed has been update!";
                 nh.loginfo(temp.c_str());
@@ -304,12 +315,13 @@ HAL_StatusTypeDef Motor::topic_cmd(const uint8_t &cmd, const int16_t *TxData) {
                 cmd_result = this->update_encoderdata();
                 if (cmd_result == HAL_OK) {
                     vPortEnterCritical();
-/*                    for (int i = 0; i < 4; ++i) {
-                        this->motor_state.motorData.aveInfo.encoderData[i] = this->motor_state.current_encData.encoder_data[i];
-                    }*/
-                    memcpy(this->motor_state.motorData.aveInfo.encoderData,this->motor_state.current_encData.encoder_data,16);
-                    this->motor_state.motorData.aveInfo.duration = (this->motor_state.current_encData.check_time -
-                                                                    this->motor_state.last_zero_tick);
+                    for (int i = 0; i < 4; ++i) {
+                        this->motor_state.motorData.aveInfo.encoderData[i] =
+                                this->motor_state.current_encData.encoder_data[i]
+                                - this->motor_state.last_encData.encoder_data[i];
+                    }
+                    this->motor_state.motorData.aveInfo.duration = this->motor_state.current_encData.check_time -
+                                                                    this->motor_state.last_encData.check_time;
                     vPortExitCritical();
                     temp = "success to get the AveSpeed!";
                     nh.loginfo(temp.c_str());
@@ -367,17 +379,15 @@ HAL_StatusTypeDef Motor::server_cmd(const communicate_with_stm32::MotorControl::
                     cmd_result = this->update_encoderdata();
                     if (cmd_result == HAL_OK) {
                         vPortEnterCritical();
-/*                        for (int i = 0; i < 4; ++i) {
+                        for (int i = 0; i < 4; ++i) {
                             this->motor_state.motorData.aveInfo.encoderData[i] =
-                                    this->motor_state.current_encData.encoder_data[i];
-                            res.data[i] = (float)this->motor_state.motorData.aveInfo.encoderData[i];
-                        }*/
-                        memcpy(this->motor_state.motorData.aveInfo.encoderData,
-                               this->motor_state.current_encData.encoder_data, 16);
+                                    this->motor_state.current_encData.encoder_data[i]
+                                    - this->motor_state.last_encData.encoder_data[i];
+                        }
                         memcpy(res.data, this->motor_state.motorData.aveInfo.encoderData, 16);
                         res.time = this->motor_state.motorData.aveInfo.time;
-                        this->motor_state.motorData.aveInfo.duration = (this->motor_state.current_encData.check_time -
-                                                                        this->motor_state.last_zero_tick);
+                        this->motor_state.motorData.aveInfo.duration = this->motor_state.current_encData.check_time -
+                                                                       this->motor_state.last_encData.check_time;
                         vPortExitCritical();
                     }
                     xSemaphoreGive(canMutex);
@@ -397,7 +407,7 @@ HAL_StatusTypeDef Motor::server_cmd(const communicate_with_stm32::MotorControl::
                 if (cmd_result == HAL_OK) {
                     vPortEnterCritical();
                     for (int i = 0; i < 4; ++i) {
-                        this->motor_state.motorData.incInfo.encoderData[i] = this->motor_state.oneMs_encoder[i] / 4.096;
+                        this->motor_state.motorData.incInfo.encoderData[i] = this->motor_state.oneMs_encoder[i];
                         res.data[i] = this->motor_state.motorData.incInfo.encoderData[i];
                     }
                     res.time = this->motor_state.motorData.incInfo.time;
@@ -415,9 +425,7 @@ HAL_StatusTypeDef Motor::server_cmd(const communicate_with_stm32::MotorControl::
                 cmd_result = this->update_encoderdata();
                 if (cmd_result == HAL_OK) {
                     vPortEnterCritical();
-                    for (int i = 0; i < 4; ++i) {
-                        res.data[i] = this->motor_state.current_encData.encoder_data[i];
-                    }
+                    memcpy(res.data, this->motor_state.current_encData.encoder_data, 16);
                     res.time = this->motor_state.motorData.aveInfo.time;
                     vPortExitCritical();
                 }
@@ -517,7 +525,7 @@ HAL_StatusTypeDef Motor::server_cmd(const communicate_with_stm32::MotorControl::
         case cmd_checkSettedSpeed:
             res.time = nh.now();
             for (int i = 0; i < 4; ++i) {
-                res.data[i] = (float)this->motor_state.setted_speed[i];
+                res.data[i] = (float) this->motor_state.setted_speed[i];
             }
             break;
         default:

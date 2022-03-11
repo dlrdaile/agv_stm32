@@ -108,18 +108,24 @@ void startup() {
     nh.advertise(motorState);
     nh.subscribe(motorSub);
     nh.advertiseService(motorSrv);
+    motor.InitState();
     while (!nh.connected()) {
+#if JLINK_DEBUG == 1
         SEGGER_RTT_printf(0, "no catch!\n");
+#endif
         nh.spinOnce();
         HAL_Delay(1000);
     }
     nh.loginfo("please publish a topic cmd ID greater than 100 to initial the system!");
-    while (!isInitial){
+    while (!isInitial) {
         nh.spinOnce();
         HAL_IWDG_Refresh(&hiwdg);
         HAL_Delay(500);
     }
-    motor.InitState();
+    if (motor.clear_encoder() != HAL_OK) {
+        nh.logwarn("initial error!Maybe no open the source!");
+        while (true) {}
+    }
 #if JLINK_DEBUG == 1
     SEGGER_RTT_printf(0, "it is time to start!\n");
 #endif
@@ -171,8 +177,10 @@ void rosCallback(void const *argument) {
     while (true) {
         begin = xTaskGetTickCount();
         nh.spinOnce();
-        xEventGroupSetBits(feedDogEvent, rosEvent);
-        vTaskDelayUntil(&begin, 300);
+        if (nh.connected()) {
+            xEventGroupSetBits(feedDogEvent, rosEvent);
+        }
+        vTaskDelayUntil(&begin, 50);
     }
 }
 
@@ -195,9 +203,11 @@ void CanNormalTCallbk(void const *argument) {
 
 void CanUrgentCallbk(void const *argument) {
     communicate_with_stm32::MotorCmd urgentcmd;
+    BaseType_t flag = pdTRUE;
     while (true) {
         if (xQueueReceive(canUrgentQueue, &urgentcmd, 100) == pdTRUE) {
-            xSemaphoreTake(canMutex, portMAX_DELAY);
+            //保证紧急指令可以被执行
+            flag = xSemaphoreTake(canMutex, 10);
             HAL_CAN_AbortTxRequest(motor.mCan->hcan, motor.mCan->TxMailbox);
             switch (urgentcmd.cmd) {
                 case cmd_Stop:
@@ -219,7 +229,8 @@ void CanUrgentCallbk(void const *argument) {
                     }
                     break;
             }
-            xSemaphoreGive(canMutex);
+            if (flag)
+                xSemaphoreGive(canMutex);
         }
         xEventGroupSetBits(feedDogEvent, canUrgentEvent);
     }
@@ -298,50 +309,36 @@ void sw3TimCallbk(TimerHandle_t xTimer) {
 
 
 void stm32TopicCtrl_cb(const communicate_with_stm32::MotorCmd &cmd) {
-    if(!isInitial)
-    {
-        if(cmd.cmd <= 100)
-        {
+    if (!isInitial) {
+        if (cmd.cmd <= 100) {
             nh.logwarn("please input a cmd greater than 100 to ensure the init!");
-        }
-        else
-        {
+        } else {
             uint8_t openFlag = cmd.cmd - 100;
-            if(openFlag & encoderInitFlag)
-            {
+            if (openFlag & encoderInitFlag) {
                 motor.encoderCtrl.IsOpen = true;
                 motor.encoderCtrl.freq = cmd.data[0];
-            }
-            else
-            {
+            } else {
                 motor.encoderCtrl.IsOpen = false;
                 motor.encoderCtrl.freq = 500;
             }
-            if(openFlag & batteryInitFlag)
-            {
+            if (openFlag & batteryInitFlag) {
                 motor.batteryCtrl.IsOpen = true;
                 motor.batteryCtrl.freq = cmd.data[1];
-            }
-            else
-            {
+            } else {
                 motor.batteryCtrl.IsOpen = false;
                 motor.batteryCtrl.freq = 1000;
             }
-            if(openFlag & rosPUbInitFlag)
-            {
+            if (openFlag & rosPUbInitFlag) {
                 motor.rosPubCtrl.IsOpen = true;
                 motor.rosPubCtrl.freq = cmd.data[2];
-            }
-            else
-            {
+            } else {
                 motor.rosPubCtrl.IsOpen = false;
                 motor.rosPubCtrl.freq = 1000;
             }
             isInitial = true;
             nh.loginfo("init the system success!");
         }
-    }
-    else{
+    } else {
         string info;
         if (cmd.isUrgent) {
             if (pdTRUE != xQueueSendToFront(canUrgentQueue, &cmd, 100)) {
@@ -362,10 +359,10 @@ void stm32TopicCtrl_cb(const communicate_with_stm32::MotorCmd &cmd) {
 
 void stm32ServerCtrl_cb(const communicate_with_stm32::MotorControl::Request &req,
                         communicate_with_stm32::MotorControl::Response &res) {
-        if (motor.server_cmd(req, res) == HAL_OK) {
-            res.success = true;
-        } else
-            res.success = false;
+    if (motor.server_cmd(req, res) == HAL_OK) {
+        res.success = true;
+    } else
+        res.success = false;
 }
 
 
@@ -423,8 +420,7 @@ HAL_StatusTypeDef start_timer() {
                 return HAL_ERROR;
             }
         }
-        if(motor.rosPubCtrl.IsOpen)
-        {
+        if (motor.rosPubCtrl.IsOpen) {
             if (!xTimerStart(rosPubHandle, 1000)) {
                 return HAL_ERROR;
             }
