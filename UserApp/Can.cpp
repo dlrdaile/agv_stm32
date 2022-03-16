@@ -88,7 +88,6 @@ CanStatusTypeDef Can::CAN_SendMsg(const uint32_t &ExtID, uint8_t *TxData, const 
 
 CanStatusTypeDef Can::CAN_ReadMsg(const uint32_t &EXTID, uint8_t Rxdata[]) const {
     CAN_RxHeaderTypeDef RxHeader;
-    static uint32_t temp1;
     if (HAL_CAN_GetRxFifoFillLevel(this->hcan, CAN_RX_FIFO0) == 0) {
         return CAN_NO_RECEIVE_ERROR;
     }
@@ -121,20 +120,23 @@ CanStatusTypeDef Can::CAN_ReadMsg(const uint32_t &EXTID, uint8_t Rxdata[]) const
     if (EXTID != RxHeader.ExtId) {
         return CAN_RECEIVE_ERROR;
     }
-
+#if JLINK_DEBUG == 1
+    for (int i = 0; i < 2; ++i) {
+        if ((EXTID == oneMS_Encoder_msgID) || (EXTID == EncoderData_msgID)){
+            SEGGER_RTT_printf(0,"1:%d\n",*((int32_t *)(Rxdata)+i));
+        }
+    }
+#endif
     if ((EXTID == oneMS_Encoder_msgID) || (EXTID == EncoderData_msgID)) {
 #if Can_Send_test == 1
         uint8_t *temp;
         HAL_CAN_GetRxMessage(this->hcan, CAN_RX_FIFO0, &RxHeader, temp);
 #endif
-        auto *p = (uint8_t *) ((uint64_t *) Rxdata + 1);
+        uint8_t *p = (uint8_t *) ((uint64_t *) Rxdata + 1);
         if (HAL_OK != HAL_CAN_GetRxMessage(this->hcan, CAN_RX_FIFO0, &RxHeader, p)) {
             return CAN_NO_RECEIVE_ERROR;
         }
-        SEGGER_RTT_printf(0,"tick diff:%d\n",HAL_GetTick() - temp1);
-        temp1 = HAL_GetTick();
 #if JLINK_DEBUG == 1 && Can_Recev_test == 1
-        SEGGER_RTT_printf(0,"current HAL_CAN_GetRxFifoFillLevel is %d\n",HAL_CAN_GetRxFifoFillLevel(this->hcan, CAN_RX_FIFO0));
         SEGGER_RTT_printf(0, "the oneMS_Encoder_msgID's second ID:\n");
         SEGGER_RTT_printf(0, "StdID = 0x%04x\n", RxHeader.StdId);
         SEGGER_RTT_printf(0, "ExtID = 0x%08x\n", RxHeader.ExtId);

@@ -19,7 +19,6 @@
 
 //ros库函数
 #include "ros.h"
-#include "communicate_with_stm32/MotorData.h"
 #include "communicate_with_stm32/MotorCmd.h"
 #include "communicate_with_stm32/MotorControl.h"
 //Freertos的库函数
@@ -36,6 +35,9 @@
 #include "SEGGER_RTT.h"
 
 #endif
+
+//when no receive the cmd more than stoptime s,restart
+#define stoptime 5000
 
 enum {
     rosEvent = 1,
@@ -85,6 +87,9 @@ ros::ServiceServer<communicate_with_stm32::MotorControl::Request,
         communicate_with_stm32::MotorControl::Response> motorSrv("stm32SeverCtrl", &stm32ServerCtrl_cb);
 
 bool isInitial = false;
+//这里是一个安全保护机制，当上位机超过20秒没有向下位机传递指令时，系统会选择复位
+bool isRestart= false;
+TickType_t last_cmd_tick;
 
 extern xQueueHandle canSendQueue;
 extern xQueueHandle canUrgentQueue;
@@ -114,6 +119,7 @@ void startup() {
         SEGGER_RTT_printf(0, "no catch!\n");
 #endif
         nh.spinOnce();
+        HAL_IWDG_Refresh(&hiwdg);
         HAL_Delay(1000);
     }
     nh.loginfo("please publish a topic cmd ID greater than 100 to initial the system!");
@@ -122,6 +128,7 @@ void startup() {
         HAL_IWDG_Refresh(&hiwdg);
         HAL_Delay(500);
     }
+    last_cmd_tick = HAL_GetTick();
     if (motor.clear_encoder() != HAL_OK) {
         nh.logwarn("initial error!Maybe no open the source!");
         while (true) {}
@@ -177,10 +184,19 @@ void rosCallback(void const *argument) {
     while (true) {
         begin = xTaskGetTickCount();
         nh.spinOnce();
+        if(HAL_GetTick() - last_cmd_tick >= stoptime) //当系统超过10s没收到指令时
+        {
+            if(xSemaphoreTake(canMutex, 0)){
+                motor.stop();
+                nh.loginfo("the motor has lose the signal more than 10s,and it will stop!");
+                last_cmd_tick = HAL_GetTick();
+                xSemaphoreGive(canMutex);
+            }
+        }
         if (nh.connected()) {
             xEventGroupSetBits(feedDogEvent, rosEvent);
         }
-        vTaskDelayUntil(&begin, 50);
+        vTaskDelayUntil(&begin, 10);
     }
 }
 
@@ -207,7 +223,7 @@ void CanUrgentCallbk(void const *argument) {
     while (true) {
         if (xQueueReceive(canUrgentQueue, &urgentcmd, 100) == pdTRUE) {
             //保证紧急指令可以被执行
-            flag = xSemaphoreTake(canMutex, 10);
+            flag = xSemaphoreTake(canMutex, 100);
             HAL_CAN_AbortTxRequest(motor.mCan->hcan, motor.mCan->TxMailbox);
             switch (urgentcmd.cmd) {
                 case cmd_Stop:
@@ -244,7 +260,7 @@ void feedDogCallbk(void const *argument) {
                             eventSum,
                             pdTRUE,
                             pdTRUE,
-                            8000);
+                            10000);
         HAL_IWDG_Refresh(&hiwdg);
     }
 }
@@ -309,8 +325,14 @@ void sw3TimCallbk(TimerHandle_t xTimer) {
 
 
 void stm32TopicCtrl_cb(const communicate_with_stm32::MotorCmd &cmd) {
+    //系统保护机制
+    last_cmd_tick = HAL_GetTick();
+    if(isRestart)
+    {
+        isRestart = false;
+    }
     if (!isInitial) {
-        if (cmd.cmd <= 100) {
+        if (cmd.cmd < 100) {
             nh.logwarn("please input a cmd greater than 100 to ensure the init!");
         } else {
             uint8_t openFlag = cmd.cmd - 100;
@@ -359,6 +381,12 @@ void stm32TopicCtrl_cb(const communicate_with_stm32::MotorCmd &cmd) {
 
 void stm32ServerCtrl_cb(const communicate_with_stm32::MotorControl::Request &req,
                         communicate_with_stm32::MotorControl::Response &res) {
+    //系统保护机制
+    last_cmd_tick = HAL_GetTick();
+    if(isRestart)
+    {
+        isRestart = false;
+    }
     if (motor.server_cmd(req, res) == HAL_OK) {
         res.success = true;
     } else
@@ -368,7 +396,7 @@ void stm32ServerCtrl_cb(const communicate_with_stm32::MotorControl::Request &req
 
 HAL_StatusTypeDef create_Queue() {
     canSendQueue = xQueueCreate(20, sizeof(communicate_with_stm32::MotorCmd));
-    canUrgentQueue = xQueueCreate(10, sizeof(communicate_with_stm32::MotorCmd));
+    canUrgentQueue = xQueueCreate(20, sizeof(communicate_with_stm32::MotorCmd));
     if (canUrgentQueue != NULL && canSendQueue != NULL) {
         return HAL_OK;
     }

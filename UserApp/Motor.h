@@ -43,28 +43,26 @@ typedef struct {
 
 typedef enum {
     cmd_sysReset = 0,
-    cmd_setSpeed,
-    cmd_Stop,
-    cmd_updateBattery,
-    cmd_updateEncoderData,
-    cmd_getIncSpeed,
-    cmd_getAveSpeed,
-    cmd_clearEncoder,
-    cmd_xyMotion,
-    cmd_swerveMotion,
-    cmd_rotateMotion,
+    cmd_setSpeed = 1,
+    cmd_Stop = 2,
+    cmd_updateBattery = 3,
+    cmd_updateEncoderData = 4,
+    cmd_getIncSpeed = 5,
+    cmd_getAveSpeed = 6,
+    cmd_clearEncoder = 7,
+    cmd_xyMotion = 8,
+    cmd_swerveMotion = 9,
+    cmd_rotateMotion = 10,
+    cmd_directeMotion = 11
 } topic_cmd_set;
 //10
 typedef enum {
-    cmd_checkAveSpeed = 11,
-    cmd_checkInsSpeed,
-    cmd_checkEncoderData,
-    cmd_checkOneMsEncoder,
-    cmd_checkbattery,
-    cmd_startupBattery,
-    cmd_startupEncoder,
-    cmd_controlPub,
-    cmd_checkSettedSpeed
+    srv_checkEncoderData = 12,
+    srv_startupBattery = 13,
+    srv_startupEncoder = 14,
+    srv_controlPub = 15,
+    srv_checkSettedSpeed = 16,
+    srv_pubMessage = 17
 } server_cmd_set;
 
 
@@ -123,6 +121,9 @@ public:
      */
     HAL_StatusTypeDef rotate_motion(int16_t rotate_speed);
 
+
+    HAL_StatusTypeDef directe_motion(int16_t rotate_speed, int16_t speed_x, int16_t speed_y);
+
     /**
      * @brief 查看电池的电量，并更新小车电量信息
      * @return
@@ -165,6 +166,7 @@ private:
      * @return
      */
     HAL_StatusTypeDef verifyReceive(const CanStatusTypeDef &transtatus, const uint32_t &ExtID);
+
 
 public:
     CarState_TypeDef motor_state;

@@ -10,7 +10,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#define JLINK_DEBUG 1
+#define JLINK_DEBUG 0
 #define Can_Recev_test 0
 #define Can_Send_test 0
 #ifdef __cplusplus

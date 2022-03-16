@@ -24,7 +24,7 @@
 #include "semphr.h"
 
 #define taskdelaytick 1
-#define encoder_taskdelay 2
+#define encoder_taskdelay 1
 extern ros::NodeHandle nh;
 extern SemaphoreHandle_t canMutex;
 extern TimerHandle_t encoderTimerHandle;
@@ -124,7 +124,9 @@ HAL_StatusTypeDef Motor::setSpeed(int16_t v1, int16_t v2, int16_t v3, int16_t v4
     extern bool isInitial;
     if (isInitial) {
         vPortEnterCritical();
-        memcpy(this->motor_state.setted_speed, speed, 8);
+        for (int i = 0; i < 4; ++i) {
+            this->motor_state.setted_speed[i] = speed[i];
+        }
         vPortExitCritical();
     }
     return HAL_OK;
@@ -140,23 +142,21 @@ HAL_StatusTypeDef Motor::motion_system_reset() {
 }
 
 HAL_StatusTypeDef Motor::XY_motion(int16_t speed_x, int16_t speed_y) {
-    int16_t raw_data[4] = {0, 0, speed_y, speed_x};
-    result = mCan->CAN_SendMsg(mvDirection_msgID, (uint8_t *) raw_data, DLSEND_42);
-    HAL_Delay(taskdelaytick);
-    return this->verifyReceive(result, mvDirection_msgID);
+    return this->directe_motion(0, speed_y, speed_x);
 }
 
 HAL_StatusTypeDef Motor::swerve_motion(int16_t radius, int16_t speed) {
     if (radius == 0) return HAL_ERROR;
-    int16_t raw_data[4] = {0, (int16_t) (speed / radius), 0, speed};
-    result = mCan->CAN_SendMsg(mvDirection_msgID, (uint8_t *) raw_data, DLSEND_42);
-    HAL_Delay(taskdelaytick);
-    return this->verifyReceive(result, mvDirection_msgID);
+    return this->directe_motion((int16_t) (speed / radius), 0, speed);
 }
 
 
 HAL_StatusTypeDef Motor::rotate_motion(int16_t rotate_speed) {
-    int16_t raw_data[4] = {0, rotate_speed, 0, 0};
+    return this->directe_motion(rotate_speed, 0, 0);
+}
+
+HAL_StatusTypeDef Motor::directe_motion(int16_t rotate_speed, int16_t speed_x, int16_t speed_y){
+    int16_t raw_data[4] = {0, rotate_speed, speed_x, speed_y};
     result = mCan->CAN_SendMsg(mvDirection_msgID, (uint8_t *) raw_data, DLSEND_42);
     HAL_Delay(taskdelaytick);
     return this->verifyReceive(result, mvDirection_msgID);
@@ -223,20 +223,22 @@ HAL_StatusTypeDef Motor::update_encoderdata() {
     if (HAL_OK == this->verifyReceive(result, EncoderData_msgID)) {
         vPortEnterCritical();
         this->motor_state.last_encData.check_time = this->motor_state.current_encData.check_time;
-        memcpy(this->motor_state.last_encData.encoder_data, this->motor_state.current_encData.encoder_data, 16);
+        for (int i = 0; i < 4; ++i) {
+            this->motor_state.last_encData.encoder_data[i] = this->motor_state.current_encData.encoder_data[i];
+            this->motor_state.current_encData.encoder_data[i] = ((int32_t *) this->CanRxBuffer)[i];
+        }
         this->motor_state.current_encData.check_time = HAL_GetTick() - encoder_taskdelay;
-        memcpy(this->motor_state.current_encData.encoder_data, this->CanRxBuffer, 16);
         this->motor_state.motorData.aveInfo.time = nh.now();
         this->motor_state.motorData.aveInfo.time -= this->entimeOffSet;
         //TODO:考虑是否要避免溢出
-       /* for (int i = 0; i < 4; ++i) {
-            uint32_t out = 1 << 31;
-            if(this->motor_state.current_encData.encoder_data[i] >= (out - 1) || this->motor_state.current_encData.encoder_data[i] <= -65000)
-            {
-                this->clear_encoder();
-                break;
-            }
-        }*/
+        /* for (int i = 0; i < 4; ++i) {
+             uint32_t out = 1 << 31;
+             if(this->motor_state.current_encData.encoder_data[i] >= (out - 1) || this->motor_state.current_encData.encoder_data[i] <= -65000)
+             {
+                 this->clear_encoder();
+                 break;
+             }
+         }*/
         vPortExitCritical();
         return HAL_OK;
     }
@@ -304,7 +306,9 @@ HAL_StatusTypeDef Motor::topic_cmd(const uint8_t &cmd, const int16_t *TxData) {
             cmd_result = this->update_oneMs_encoder();
             if (cmd_result == HAL_OK) {
                 vPortEnterCritical();
-                memcpy(this->motor_state.motorData.incInfo.encoderData, this->motor_state.oneMs_encoder, 4);
+                for (int i = 0; i < 4; ++i) {
+                    this->motor_state.motorData.incInfo.encoderData[i] = this->motor_state.oneMs_encoder[i];
+                }
                 vPortExitCritical();
                 temp = "the IncSpeed has been update!";
                 nh.loginfo(temp.c_str());
@@ -321,7 +325,7 @@ HAL_StatusTypeDef Motor::topic_cmd(const uint8_t &cmd, const int16_t *TxData) {
                                 - this->motor_state.last_encData.encoder_data[i];
                     }
                     this->motor_state.motorData.aveInfo.duration = this->motor_state.current_encData.check_time -
-                                                                    this->motor_state.last_encData.check_time;
+                                                                   this->motor_state.last_encData.check_time;
                     vPortExitCritical();
                     temp = "success to get the AveSpeed!";
                     nh.loginfo(temp.c_str());
@@ -360,6 +364,13 @@ HAL_StatusTypeDef Motor::topic_cmd(const uint8_t &cmd, const int16_t *TxData) {
                 nh.loginfo(temp.c_str());
             }
             break;
+        case cmd_directeMotion:
+            cmd_result = this->directe_motion(TxData[1],TxData[2],TxData[3]);
+            if (cmd_result == HAL_OK) {
+                temp = "the directMotion is set successfully!";
+                nh.loginfo(temp.c_str());
+            }
+            break;
         default:
             nh.logwarn("undefined topic cmd!");
             cmd_result = HAL_ERROR;
@@ -372,60 +383,14 @@ HAL_StatusTypeDef Motor::server_cmd(const communicate_with_stm32::MotorControl::
                                     communicate_with_stm32::MotorControl::Response &res) {
     HAL_StatusTypeDef cmd_result = HAL_OK;
     switch (req.cmd) {
-        case cmd_checkAveSpeed:
-            if (this->encoderCtrl.IsOpen) {
-                //若1秒钟内没有得到互斥锁，则返回错误
-                if (xSemaphoreTake(canMutex, 1000) == pdTRUE) {
-                    cmd_result = this->update_encoderdata();
-                    if (cmd_result == HAL_OK) {
-                        vPortEnterCritical();
-                        for (int i = 0; i < 4; ++i) {
-                            this->motor_state.motorData.aveInfo.encoderData[i] =
-                                    this->motor_state.current_encData.encoder_data[i]
-                                    - this->motor_state.last_encData.encoder_data[i];
-                        }
-                        memcpy(res.data, this->motor_state.motorData.aveInfo.encoderData, 16);
-                        res.time = this->motor_state.motorData.aveInfo.time;
-                        this->motor_state.motorData.aveInfo.duration = this->motor_state.current_encData.check_time -
-                                                                       this->motor_state.last_encData.check_time;
-                        vPortExitCritical();
-                    }
-                    xSemaphoreGive(canMutex);
-                } else {
-                    nh.logwarn("Currently busy with work, please check later or turn on the "
-                               "scheduled query function");
-                    cmd_result = HAL_ERROR;
-                }
-            } else {
-                cmd_result = HAL_ERROR;
-                nh.logwarn("if you want to get the speed,please open the channel to check the encoder!");
-            }
-            break;
-        case cmd_checkInsSpeed:
-            if (xSemaphoreTake(canMutex, 1000) == pdTRUE) {
-                cmd_result = this->update_oneMs_encoder();
-                if (cmd_result == HAL_OK) {
-                    vPortEnterCritical();
-                    for (int i = 0; i < 4; ++i) {
-                        this->motor_state.motorData.incInfo.encoderData[i] = this->motor_state.oneMs_encoder[i];
-                        res.data[i] = this->motor_state.motorData.incInfo.encoderData[i];
-                    }
-                    res.time = this->motor_state.motorData.incInfo.time;
-                    vPortExitCritical();
-                }
-                xSemaphoreGive(canMutex);
-            } else {
-                nh.logwarn("Currently busy with work, please check later or turn on the "
-                           "scheduled query function");
-                cmd_result = HAL_ERROR;
-            }
-            break;
-        case cmd_checkEncoderData:
+        case srv_checkEncoderData:
             if (xSemaphoreTake(canMutex, 1000) == pdTRUE) {
                 cmd_result = this->update_encoderdata();
                 if (cmd_result == HAL_OK) {
                     vPortEnterCritical();
-                    memcpy(res.data, this->motor_state.current_encData.encoder_data, 16);
+                    for (int i = 0; i < 4; ++i) {
+                        res.data[i] = this->motor_state.current_encData.encoder_data[i];
+                    }
                     res.time = this->motor_state.motorData.aveInfo.time;
                     vPortExitCritical();
                 }
@@ -436,39 +401,7 @@ HAL_StatusTypeDef Motor::server_cmd(const communicate_with_stm32::MotorControl::
                 cmd_result = HAL_ERROR;
             }
             break;
-        case cmd_checkOneMsEncoder:
-            if (xSemaphoreTake(canMutex, 1000) == pdTRUE) {
-                cmd_result = this->update_oneMs_encoder();
-                if (cmd_result == HAL_OK) {
-                    vPortEnterCritical();
-                    for (int i = 0; i < 4; ++i) {
-                        res.data[i] = this->motor_state.oneMs_encoder[i];
-                    }
-                    res.time = this->motor_state.motorData.incInfo.time;
-                    vPortExitCritical();
-                }
-                xSemaphoreGive(canMutex);
-            } else {
-                nh.logwarn("Currently busy with work, please check later or turn on the "
-                           "scheduled query function");
-                cmd_result = HAL_ERROR;
-            }
-            break;
-        case cmd_checkbattery:
-            if (pdTRUE != xSemaphoreTake(canMutex, 1000)) {
-                cmd_result = HAL_ERROR;
-                nh.logwarn("Currently busy with work, please check later or turn on the "
-                           "scheduled query function");
-            } else {
-                cmd_result = this->update_battery();
-                if (cmd_result == HAL_OK) {
-                    res.data[0] = this->motor_state.motorData.batteryInfo.mVoltage;
-                    res.time = this->motor_state.motorData.batteryInfo.time;
-                }
-                xSemaphoreGive(canMutex);
-            }
-            break;
-        case cmd_startupEncoder:
+        case srv_startupEncoder:
             if (req.Key) {
                 if (pdTRUE == xSemaphoreTake(canMutex, 1000)) {
                     cmd_result = this->clear_encoder();
@@ -493,7 +426,7 @@ HAL_StatusTypeDef Motor::server_cmd(const communicate_with_stm32::MotorControl::
                 cmd_result = HAL_OK;
             }
             break;
-        case cmd_startupBattery:
+        case srv_startupBattery:
             if (req.Key) {
                 if (xTimerChangePeriod(batteryTimerHandle, req.Period, 100) && xTimerReset(batteryTimerHandle, 100)) {
                     this->batteryCtrl.IsOpen = true;
@@ -506,7 +439,7 @@ HAL_StatusTypeDef Motor::server_cmd(const communicate_with_stm32::MotorControl::
                 this->batteryCtrl.IsOpen = false;
             }
             break;
-        case cmd_controlPub:
+        case srv_controlPub:
             if (req.Key) {
                 if (xTimerChangePeriod(rosPubHandle, req.Period, 100) && xTimerReset(rosPubHandle, 100)) {
                     this->rosPubCtrl.IsOpen = true;
@@ -522,10 +455,25 @@ HAL_StatusTypeDef Motor::server_cmd(const communicate_with_stm32::MotorControl::
                 }
             }
             break;
-        case cmd_checkSettedSpeed:
+        case srv_checkSettedSpeed:
             res.time = nh.now();
             for (int i = 0; i < 4; ++i) {
                 res.data[i] = (float) this->motor_state.setted_speed[i];
+            }
+            break;
+        case srv_pubMessage:
+            if (req.Key) {
+                extern ros::Publisher motorState;
+                vPortEnterCritical();
+                for (int i = 0; i < 4; ++i) {
+                    this->motor_state.motorData.aveInfo.encoderData[i] =
+                            this->motor_state.current_encData.encoder_data[i]
+                            - this->motor_state.last_encData.encoder_data[i];
+                }
+                this->motor_state.motorData.aveInfo.duration = this->motor_state.current_encData.check_time -
+                                                               this->motor_state.last_encData.check_time;
+                vPortExitCritical();
+                motorState.publish(&this->motor_state.motorData);
             }
             break;
         default:
@@ -558,26 +506,21 @@ const char *select_name(uint8_t &cmd) {
             return "swerveMotion";
         case cmd_rotateMotion:
             return "rotateMotion";
-        case cmd_checkAveSpeed:
-            return "checkAveSpeed";
-        case cmd_checkInsSpeed:
-            return "checkInsSpeed";
-        case cmd_checkEncoderData:
+            //sever
+        case srv_checkEncoderData:
             return "checkEncoderData";
-        case cmd_checkOneMsEncoder:
-            return "checkOneMsEncoder";
-        case cmd_checkbattery:
-            return "checkbattery";
-        case cmd_startupBattery:
+        case srv_startupBattery:
             return "startupBattery";
-        case cmd_startupEncoder:
+        case srv_startupEncoder:
             return "startupEncoder";
         case cmd_getAveSpeed:
             return "getAveSpeed";
-        case cmd_controlPub:
+        case srv_controlPub:
             return "controlPub";
-        case cmd_checkSettedSpeed:
+        case srv_checkSettedSpeed:
             return "checkSettedSpeed";
+        case srv_pubMessage:
+            return "pubMessage";
         default:
             return "error";
     }
