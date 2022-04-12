@@ -67,6 +67,10 @@ void Error_Handler(void);
 #define SW3_Pin GPIO_PIN_6
 #define SW3_GPIO_Port GPIOE
 #define SW3_EXTI_IRQn EXTI9_5_IRQn
+#define HX711_SCK_Pin GPIO_PIN_14
+#define HX711_SCK_GPIO_Port GPIOD
+#define HX711_DT_Pin GPIO_PIN_15
+#define HX711_DT_GPIO_Port GPIOD
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */

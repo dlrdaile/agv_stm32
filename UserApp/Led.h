@@ -8,8 +8,10 @@
 #ifndef PROJECT_CAR_LED_H
 #define PROJECT_CAR_LED_H
 #ifdef __cplusplus
+
 #include "GPIO_Base.h"
 #include "main.h"
+
 class Led : public GPIO_Base {
 public:
     /**
@@ -27,6 +29,9 @@ public:
     void Off();
 
     void Toggle();
+
+    GPIO_PinState Read_State();
+
 };
 
 #endif

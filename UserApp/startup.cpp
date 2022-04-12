@@ -16,11 +16,13 @@
 #include "Led.h"
 #include "Can.h"
 #include "Motor.h"
+#include "HX711.h"
 
 //ros库函数
 #include "ros.h"
 #include "communicate_with_stm32/MotorCmd.h"
 #include "communicate_with_stm32/MotorControl.h"
+#include "communicate_with_stm32/PowerCalc.h"
 //Freertos的库函数
 #include "FreeRTOS.h"
 #include "task.h"
@@ -47,7 +49,8 @@ enum {
 enum {
     encoderInitFlag = 1,
     batteryInitFlag = 1 << 1,
-    rosPUbInitFlag = 1 << 2
+    rosPubInitFlag = 1 << 2,
+    powerCalcInitFlag = 1<<3,
 };
 
 //用户变量初始化区
@@ -57,6 +60,8 @@ Key hsw3(SW3_GPIO_Port, SW3_Pin);
 Led hled0(LED0_GPIO_Port, LED0_Pin, on_Low);
 Led hled1(LED1_GPIO_Port, LED1_Pin);
 
+HX711 hx711(HX711_SCK_GPIO_Port, HX711_SCK_Pin,HX711_DT_GPIO_Port,HX711_DT_Pin);
+
 Motor motor(hcan1);
 
 #if (configGENERATE_RUN_TIME_STATS == 1) && (JLINK_DEBUG == 1)
@@ -64,6 +69,8 @@ volatile unsigned long long run_time_stats_tick;
 #endif
 
 void stm32TopicCtrl_cb(const communicate_with_stm32::MotorCmd &cmd);
+
+void rosPowerCalc_cb(const communicate_with_stm32::PowerCalc &cmd);
 
 void stm32ServerCtrl_cb(const communicate_with_stm32::MotorControl::Request &req,
                         communicate_with_stm32::MotorControl::Response &res);
@@ -78,9 +85,13 @@ void sw3TimCallbk(TimerHandle_t xTimer);
 
 void rosPubCallbk(TimerHandle_t xTimer);
 
+void powerCalcCallbk(TimerHandle_t xTimer);
+
 
 ros::NodeHandle nh;
+communicate_with_stm32::PowerCalc powerCalc_msg;
 ros::Publisher motorState("motorState", &motor.motor_state.motorData);
+ros::Publisher powerPub("powerCalc", &powerCalc_msg);
 ros::Subscriber<communicate_with_stm32::MotorCmd> motorSub("stm32TopicCtrl", &stm32TopicCtrl_cb);
 
 ros::ServiceServer<communicate_with_stm32::MotorControl::Request,
@@ -104,6 +115,7 @@ TimerHandle_t batteryTimerHandle;
 TimerHandle_t sw2TimerHandle;
 TimerHandle_t sw3TimerHandle;
 TimerHandle_t rosPubHandle;
+TimerHandle_t powerCalcHandle;
 
 void startup() {
 #if JLINK_DEBUG == 1
@@ -111,6 +123,7 @@ void startup() {
 #endif
     nh.initNode();
     nh.advertise(motorState);
+    nh.advertise(powerPub);
     nh.subscribe(motorSub);
     nh.advertiseService(motorSrv);
     motor.InitState();
@@ -313,6 +326,21 @@ void rosPubCallbk(TimerHandle_t xTimer) {
         motorState.publish(&motor.motor_state.motorData);
         vPortExitCritical();
     }
+    if(motor.powerCalcCtrl.IsOpen)
+    {
+        vPortEnterCritical();
+        powerPub.publish(&powerCalc_msg);
+        vPortExitCritical();
+    }
+}
+
+void powerCalcCallbk(TimerHandle_t xTimer){
+    if(motor.powerCalcCtrl.IsOpen)
+    {
+         powerCalc_msg.weight = hx711.Get_Weight();
+         powerCalc_msg.header.frame_id = "Pressure";
+         powerCalc_msg.header.stamp = nh.now();
+    }
 }
 
 void sw2TimCallbk(TimerHandle_t xTimer) {
@@ -350,7 +378,14 @@ void stm32TopicCtrl_cb(const communicate_with_stm32::MotorCmd &cmd) {
                 motor.batteryCtrl.IsOpen = false;
                 motor.batteryCtrl.freq = 1000;
             }
-            if (openFlag & rosPUbInitFlag) {
+            if (openFlag & rosPubInitFlag) {
+                motor.rosPubCtrl.IsOpen = true;
+                motor.rosPubCtrl.freq = cmd.data[2];
+            } else {
+                motor.rosPubCtrl.IsOpen = false;
+                motor.rosPubCtrl.freq = 1000;
+            }
+            if (openFlag & powerCalcInitFlag) {
                 motor.rosPubCtrl.IsOpen = true;
                 motor.rosPubCtrl.freq = cmd.data[2];
             } else {
@@ -433,10 +468,16 @@ HAL_StatusTypeDef start_timer() {
                                 pdTRUE,
                                 (void *) 5,
                                 rosPubCallbk);
+    powerCalcHandle = xTimerCreate("powerCalc",
+                                motor.powerCalcCtrl.freq,
+                                pdTRUE,
+                                (void *) 6,
+                                powerCalcCallbk);
     if ((encoderTimerHandle != NULL)
         && (batteryTimerHandle != NULL)
         && (sw2TimerHandle != NULL)
         && (sw3TimerHandle != NULL)
+        && (powerCalcHandle != NULL)
             ) {
         if (motor.encoderCtrl.IsOpen) {
             if (!xTimerStart(encoderTimerHandle, 1000)) {
@@ -450,6 +491,11 @@ HAL_StatusTypeDef start_timer() {
         }
         if (motor.rosPubCtrl.IsOpen) {
             if (!xTimerStart(rosPubHandle, 1000)) {
+                return HAL_ERROR;
+            }
+        }
+        if (motor.powerCalcCtrl.IsOpen) {
+            if (!xTimerStart(powerCalcHandle, 1000)) {
                 return HAL_ERROR;
             }
         }

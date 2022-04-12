@@ -32,10 +32,7 @@ bool IsOpen;
 uint16_t freq;
 } Control_TypeDef;
 
-
 typedef struct {
-    int16_t setted_speed[4];
-    int8_t oneMs_encoder[4];
     EncoderData_TypeDef last_encData;
     EncoderData_TypeDef current_encData;
     communicate_with_stm32::MotorData motorData;
@@ -47,22 +44,17 @@ typedef enum {
     cmd_Stop = 2,
     cmd_updateBattery = 3,
     cmd_updateEncoderData = 4,
-    cmd_getIncSpeed = 5,
-    cmd_getAveSpeed = 6,
-    cmd_clearEncoder = 7,
-    cmd_xyMotion = 8,
-    cmd_swerveMotion = 9,
-    cmd_rotateMotion = 10,
-    cmd_directeMotion = 11
+    cmd_getAveSpeed = 5,
+    cmd_clearEncoder = 6,
+    cmd_directeMotion = 7
 } topic_cmd_set;
 //10
 typedef enum {
-    srv_checkEncoderData = 12,
     srv_startupBattery = 13,
     srv_startupEncoder = 14,
     srv_controlPub = 15,
-    srv_checkSettedSpeed = 16,
-    srv_pubMessage = 17
+    srv_startPowerCalc = 16,
+    srv_setPowerZero = 17,
 } server_cmd_set;
 
 
@@ -98,30 +90,6 @@ public:
      */
     HAL_StatusTypeDef motion_system_reset();
 
-    /**
-     * @brief 设置车子做一定半径的圆周运动
-     * @param radius 半径，单位为 m
-     * @param speed 转弯过程中的线速度，速度为 (value * 1e-4)m/s
-     * @return
-     */
-    HAL_StatusTypeDef swerve_motion(int16_t radius, int16_t speed);
-
-    /**
-     * @brief 控制小车在平面做某一方向的直线运动
-     * @param speed_x x方向的速度,速度为 （value * 1e-4）m/s
-     * @param speed_y y方向的速度,（value * 1e-4）m/s
-     * @return
-     */
-    HAL_StatusTypeDef XY_motion(int16_t speed_x, int16_t speed_y);
-
-    /**
-     * @brief 小车原地自转
-     * @param rotate_speed 原地自转的角速度，角速度为（value * 1e-4）rad/s
-     * @return
-     */
-    HAL_StatusTypeDef rotate_motion(int16_t rotate_speed);
-
-
     HAL_StatusTypeDef directe_motion(int16_t rotate_speed, int16_t speed_x, int16_t speed_y);
 
     /**
@@ -129,12 +97,6 @@ public:
      * @return
      */
     HAL_StatusTypeDef update_battery();
-
-    /**
-     * @brief 查看1ms内编码器的读取数值，编码器的精度为2^12,即每一圈编码器会读取2^12个脉冲信号
-     * @return
-     */
-    HAL_StatusTypeDef update_oneMs_encoder();
 
     HAL_StatusTypeDef update_encoderdata();
 
@@ -175,6 +137,7 @@ public:
     Control_TypeDef encoderCtrl;
     Control_TypeDef batteryCtrl;
     Control_TypeDef rosPubCtrl;
+    Control_TypeDef powerCalcCtrl;
 private:
     CanStatusTypeDef result;
     const ros::Duration timeOffSet;

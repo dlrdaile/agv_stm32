@@ -92,8 +92,8 @@
 /* Software timer definitions. */
 #define configUSE_TIMERS                         1
 #define configTIMER_TASK_PRIORITY                ( 4 )
-#define configTIMER_QUEUE_LENGTH                 15
-#define configTIMER_TASK_STACK_DEPTH             256
+#define configTIMER_QUEUE_LENGTH                 20
+#define configTIMER_TASK_STACK_DEPTH             512
 
 /* The following flag must be enabled only when using newlib */
 #define configUSE_NEWLIB_REENTRANT          1
