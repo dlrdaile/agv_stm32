@@ -48,11 +48,28 @@ else ()
     add_compile_options(-Og -g)
 endif ()
 
-include_directories(${includes} UserApp Middlewares/Third_Party/ros_lib Middlewares/Third_Party/RTT/RTT Middlewares/Third_Party/RTT/Config)
+include_directories(${includes}
+Middlewares/Third_Party/ros_lib
+Middlewares/Third_Party/RTT/RTT
+Middlewares/Third_Party/RTT/Config
+UserApp/BSP/Inc
+UserApp/Motor/Inc
+UserApp/FreeRTOS/Inc
+UserApp/Work/Inc
+UserApp/ROS/Inc
+UserApp/Config
+)
 
 add_definitions(${defines})
 
-file(GLOB_RECURSE SOURCES ${sources} "UserApp/*.*" "Middlewares/Third_Party/ros_lib/*.cpp" "Middlewares/Third_Party/RTT/RTT/*.c")
+file(GLOB_RECURSE SOURCES ${sources}
+"Middlewares/Third_Party/ros_lib/*.cpp"
+"Middlewares/Third_Party/RTT/RTT/*.c"
+"UserApp/BSP/Src/*.*"
+"UserApp/FreeRTOS/Src/*.*"
+"UserApp/Work/Src/*.*"
+"UserApp/ROS/Src/*.*"
+"UserApp/Motor/Src/*.*")
 
 set(LINKER_SCRIPT $${CMAKE_SOURCE_DIR}/${linkerScript})
 

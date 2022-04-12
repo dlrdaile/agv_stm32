@@ -77,7 +77,7 @@ namespace communicate_with_stm32
      return offset;
     }
 
-    virtual const char * getType() override { return "communicate_with_stm32/MotorCmd"; };
+    virtual const char * getType() override { return "communicate_with_stm32/Motor2Can"; };
     virtual const char * getMD5() override { return "82317bc357f955631b3fbf5f7379212e"; };
 
   };

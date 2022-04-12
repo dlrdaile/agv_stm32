@@ -6,7 +6,6 @@
  * @description:
  ********************************************************************************/
 #include "HX711.h"
-#include "cstdio"
 #include "dwt_stm32_delay.h"
 #include "cmsis_os.h"
 #include "ros.h"
@@ -77,6 +76,7 @@ uint32_t HX711::HX711_Read() {
       return 0;
     }
   }
+  vPortEnterCritical();
   for (i = 0; i < 24; i++) {
     HX711_SCK->On();
     DWT_Delay_us(DELAY_US);
@@ -90,6 +90,7 @@ uint32_t HX711::HX711_Read() {
   DWT_Delay_us(DELAY_US);
   HX711_SCK->Off();
   DWT_Delay_us(DELAY_US);
+  vPortExitCritical();
   count ^= 0x800000;
   return count;
 }

@@ -49,11 +49,28 @@ else ()
     add_compile_options(-Og -g)
 endif ()
 
-include_directories(Inc Drivers/STM32F4xx_HAL_Driver/Inc Drivers/STM32F4xx_HAL_Driver/Inc/Legacy Drivers/CMSIS/Device/ST/STM32F4xx/Include Drivers/CMSIS/Include Middlewares/Third_Party/FreeRTOS/Source/include Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F ThreadSafe UserApp Middlewares/Third_Party/ros_lib Middlewares/Third_Party/RTT/RTT Middlewares/Third_Party/RTT/Config)
+include_directories(Inc Drivers/STM32F4xx_HAL_Driver/Inc Drivers/STM32F4xx_HAL_Driver/Inc/Legacy Drivers/CMSIS/Device/ST/STM32F4xx/Include Drivers/CMSIS/Include Middlewares/Third_Party/FreeRTOS/Source/include Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F ThreadSafe
+Middlewares/Third_Party/ros_lib
+Middlewares/Third_Party/RTT/RTT
+Middlewares/Third_Party/RTT/Config
+UserApp/BSP/Inc
+UserApp/Motor/Inc
+UserApp/FreeRTOS/Inc
+UserApp/Work/Inc
+UserApp/ROS/Inc
+UserApp/Config
+)
 
 add_definitions(-DDEBUG -DUSE_HAL_DRIVER -DSTM32F407xx -DSTM32_THREAD_SAFE_STRATEGY=4)
 
-file(GLOB_RECURSE SOURCES "ThreadSafe/*.*" "Startup/*.*" "Src/*.*" "Middlewares/*.*" "Drivers/*.*" "UserApp/*.*" "Middlewares/Third_Party/ros_lib/*.cpp" "Middlewares/Third_Party/RTT/RTT/*.c")
+file(GLOB_RECURSE SOURCES "ThreadSafe/*.*" "Startup/*.*" "Src/*.*" "Middlewares/*.*" "Drivers/*.*"
+"Middlewares/Third_Party/ros_lib/*.cpp"
+"Middlewares/Third_Party/RTT/RTT/*.c"
+"UserApp/BSP/Src/*.*"
+"UserApp/FreeRTOS/Src/*.*"
+"UserApp/Work/Src/*.*"
+"UserApp/ROS/Src/*.*"
+"UserApp/Motor/Src/*.*")
 
 set(LINKER_SCRIPT ${CMAKE_SOURCE_DIR}/STM32F407VETX_FLASH.ld)
 

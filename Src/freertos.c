@@ -25,10 +25,11 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "startup.h"
+#include "freertos_setup.h"
 #include "SEGGER_RTT.h"
 #include "event_groups.h"
 #include "timers.h"
+#include "UserConfig.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -58,6 +59,7 @@ osThreadId CanNormalTaskHandle;
 osThreadId CanUrgentTaskHandle;
 osThreadId feedDogTaskHandle;
 osThreadId keyTaskHandle;
+osThreadId PressTaskHandle;
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
@@ -69,6 +71,7 @@ void CanNormalTCallbk(void const * argument);
 void CanUrgentCallbk(void const * argument);
 void feedDogCallbk(void const * argument);
 void keyCheckCallbk(void const * argument);
+void PressCallbk(void const * argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -191,9 +194,15 @@ void MX_FREERTOS_Init(void) {
   osThreadDef(keyTask, keyCheckCallbk, osPriorityAboveNormal, 0, 128);
   keyTaskHandle = osThreadCreate(osThread(keyTask), NULL);
 
+  /* definition and creation of PressTask */
+  osThreadDef(PressTask, PressCallbk, osPriorityBelowNormal, 0, 128);
+  PressTaskHandle = osThreadCreate(osThread(PressTask), NULL);
+
   /* USER CODE BEGIN RTOS_THREADS */
     /* add threads, ... */
+#if JLINK_DEBUG == 1
     SEGGER_RTT_printf(0,"start!");
+#endif
   /* USER CODE END RTOS_THREADS */
 
 }
@@ -281,6 +290,24 @@ __weak void keyCheckCallbk(void const * argument)
         osDelay(1);
     }
   /* USER CODE END keyCheckCallbk */
+}
+
+/* USER CODE BEGIN Header_PressCallbk */
+/**
+* @brief Function implementing the PressTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_PressCallbk */
+__weak void PressCallbk(void const * argument)
+{
+  /* USER CODE BEGIN PressCallbk */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END PressCallbk */
 }
 
 /* Private application code --------------------------------------------------*/
