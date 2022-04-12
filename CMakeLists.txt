@@ -53,7 +53,7 @@ include_directories(Inc Drivers/STM32F4xx_HAL_Driver/Inc Drivers/STM32F4xx_HAL_D
 
 add_definitions(-DDEBUG -DUSE_HAL_DRIVER -DSTM32F407xx -DSTM32_THREAD_SAFE_STRATEGY=4)
 
-file(GLOB_RECURSE SOURCES "ThreadSafe/*.*" "Startup/*.*" "Src/*.*" "Middlewares/*.*" "Drivers/*.*" "UserApp/*.cpp" "Middlewares/Third_Party/ros_lib/*.cpp" "Middlewares/Third_Party/RTT/RTT/*.c")
+file(GLOB_RECURSE SOURCES "ThreadSafe/*.*" "Startup/*.*" "Src/*.*" "Middlewares/*.*" "Drivers/*.*" "UserApp/*.*" "Middlewares/Third_Party/ros_lib/*.cpp" "Middlewares/Third_Party/RTT/RTT/*.c")
 
 set(LINKER_SCRIPT ${CMAKE_SOURCE_DIR}/STM32F407VETX_FLASH.ld)
 

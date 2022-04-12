@@ -29,4 +29,7 @@ void Led::Toggle() {
     HAL_GPIO_TogglePin(this->GPIO_Port, this->GPIO_Pin);
 }
 
+GPIO_PinState Led::Read_State() {
+    return HAL_GPIO_ReadPin(this->GPIO_Port,this->GPIO_Pin);
+}
 

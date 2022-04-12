@@ -49,7 +49,7 @@
 #include "stm32f7xx_hal_uart.h"
 #endif /* STM32F7xx */
 #define buffersize 2048
-extern UART_HandleTypeDef huart4;
+extern UART_HandleTypeDef huart5;
 
 class STM32Hardware {
   protected:
@@ -66,7 +66,7 @@ class STM32Hardware {
 
   public:
     STM32Hardware():
-      huart(&huart4), rind(0), twind(0), tfind(0){
+      huart(&huart5), rind(0), twind(0), tfind(0){
     }
 
     STM32Hardware(UART_HandleTypeDef *huart_):

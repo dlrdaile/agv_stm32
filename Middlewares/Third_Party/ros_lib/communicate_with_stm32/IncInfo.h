@@ -15,7 +15,7 @@ namespace communicate_with_stm32
     public:
       typedef ros::Time _time_type;
       _time_type time;
-      int8_t encoderData[4];
+      float encoderData[4];
 
     IncInfo():
       time(),
@@ -38,11 +38,14 @@ namespace communicate_with_stm32
       offset += sizeof(this->time.nsec);
       for( uint32_t i = 0; i < 4; i++){
       union {
-        int8_t real;
-        uint8_t base;
+        float real;
+        uint32_t base;
       } u_encoderDatai;
       u_encoderDatai.real = this->encoderData[i];
       *(outbuffer + offset + 0) = (u_encoderDatai.base >> (8 * 0)) & 0xFF;
+      *(outbuffer + offset + 1) = (u_encoderDatai.base >> (8 * 1)) & 0xFF;
+      *(outbuffer + offset + 2) = (u_encoderDatai.base >> (8 * 2)) & 0xFF;
+      *(outbuffer + offset + 3) = (u_encoderDatai.base >> (8 * 3)) & 0xFF;
       offset += sizeof(this->encoderData[i]);
       }
       return offset;
@@ -63,11 +66,14 @@ namespace communicate_with_stm32
       offset += sizeof(this->time.nsec);
       for( uint32_t i = 0; i < 4; i++){
       union {
-        int8_t real;
-        uint8_t base;
+        float real;
+        uint32_t base;
       } u_encoderDatai;
       u_encoderDatai.base = 0;
-      u_encoderDatai.base |= ((uint8_t) (*(inbuffer + offset + 0))) << (8 * 0);
+      u_encoderDatai.base |= ((uint32_t) (*(inbuffer + offset + 0))) << (8 * 0);
+      u_encoderDatai.base |= ((uint32_t) (*(inbuffer + offset + 1))) << (8 * 1);
+      u_encoderDatai.base |= ((uint32_t) (*(inbuffer + offset + 2))) << (8 * 2);
+      u_encoderDatai.base |= ((uint32_t) (*(inbuffer + offset + 3))) << (8 * 3);
       this->encoderData[i] = u_encoderDatai.real;
       offset += sizeof(this->encoderData[i]);
       }
@@ -75,7 +81,7 @@ namespace communicate_with_stm32
     }
 
     virtual const char * getType() override { return "communicate_with_stm32/IncInfo"; };
-    virtual const char * getMD5() override { return "3fcb2350e121cb880ae78282d553ba87"; };
+    virtual const char * getMD5() override { return "9084687635a8e146bce68a1506b39b6c"; };
 
   };
 

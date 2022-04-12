@@ -22,14 +22,18 @@
 #include "ros.h"
 #include "memory.h"
 #include "semphr.h"
+#include "HX711.h"
 
 #define taskdelaytick 1
 #define encoder_taskdelay 1
+
+extern HX711 hx711;
 extern ros::NodeHandle nh;
 extern SemaphoreHandle_t canMutex;
 extern TimerHandle_t encoderTimerHandle;
 extern TimerHandle_t batteryTimerHandle;
 extern TimerHandle_t rosPubHandle;
+extern TimerHandle_t powerCalcHandle;
 
 static inline string chIDName(const uint32_t &ExtID) {
     string name;
@@ -110,9 +114,9 @@ Motor::~Motor() {
  */
 
 HAL_StatusTypeDef Motor::setSpeed(int16_t v1, int16_t v2, int16_t v3, int16_t v4) {
-    v2 *= -1;
-    v3 *= -1;
     int16_t speed[4] = {v1, v2, v3, v4};
+    speed[2] *= -1;
+    speed[1] *= -1;
     result = this->mCan->CAN_SendMsg(setSpeed_msgID, (uint8_t *) speed, DLSEND_41);
 #if JLINK_DEBUG == 1
     SEGGER_RTT_printf(0, "the setSpeed msgID is:0x%08x\n", setSpeed_msgID);
@@ -125,7 +129,9 @@ HAL_StatusTypeDef Motor::setSpeed(int16_t v1, int16_t v2, int16_t v3, int16_t v4
     if (isInitial) {
         vPortEnterCritical();
         for (int i = 0; i < 4; ++i) {
-            this->motor_state.setted_speed[i] = speed[i];
+            this->motor_state.motorData.set_speed[i] = speed[i] * 0.0001;//m/s
+            if (i == 1 || i == 2)
+                this->motor_state.motorData.set_speed[i] *= -1;
         }
         vPortExitCritical();
     }
@@ -141,22 +147,8 @@ HAL_StatusTypeDef Motor::motion_system_reset() {
     return this->verifyReceive(result, sysReset_msgID);
 }
 
-HAL_StatusTypeDef Motor::XY_motion(int16_t speed_x, int16_t speed_y) {
-    return this->directe_motion(0, speed_y, speed_x);
-}
-
-HAL_StatusTypeDef Motor::swerve_motion(int16_t radius, int16_t speed) {
-    if (radius == 0) return HAL_ERROR;
-    return this->directe_motion((int16_t) (speed / radius), 0, speed);
-}
-
-
-HAL_StatusTypeDef Motor::rotate_motion(int16_t rotate_speed) {
-    return this->directe_motion(rotate_speed, 0, 0);
-}
-
-HAL_StatusTypeDef Motor::directe_motion(int16_t rotate_speed, int16_t speed_x, int16_t speed_y){
-    int16_t raw_data[4] = {0, rotate_speed, speed_x, speed_y};
+HAL_StatusTypeDef Motor::directe_motion(int16_t rotate_speed, int16_t speed_x, int16_t speed_y) {
+    int16_t raw_data[4] = {speed_x, speed_y, rotate_speed, 0};
     result = mCan->CAN_SendMsg(mvDirection_msgID, (uint8_t *) raw_data, DLSEND_42);
     HAL_Delay(taskdelaytick);
     return this->verifyReceive(result, mvDirection_msgID);
@@ -182,22 +174,6 @@ HAL_StatusTypeDef Motor::update_battery() {
         return HAL_ERROR;
 }
 
-HAL_StatusTypeDef Motor::update_oneMs_encoder() {
-    result = mCan->CAN_SendMsg(oneMS_Encoder_msgID, NULL, DLSEND_48);
-#if JLINK_DEBUG == 1
-    SEGGER_RTT_printf(0, "the update_oneMs_encoder msgID is:0x%08x\n", oneMS_Encoder_msgID);
-#endif
-    HAL_Delay(encoder_taskdelay);
-    if (HAL_OK == this->verifyReceive(result, oneMS_Encoder_msgID)) {
-        for (int i = 0; i < 4; ++i) {
-            this->motor_state.oneMs_encoder[i] = (int8_t) (((uint32_t *) this->CanRxBuffer)[i]);
-        }
-        this->motor_state.motorData.incInfo.time = nh.now();
-        this->motor_state.motorData.incInfo.time -= this->entimeOffSet;
-        return HAL_OK;
-    } else
-        return HAL_ERROR;
-}
 
 HAL_StatusTypeDef Motor::stop() {
     return this->setSpeed(0, 0, 0, 0);
@@ -302,18 +278,6 @@ HAL_StatusTypeDef Motor::topic_cmd(const uint8_t &cmd, const int16_t *TxData) {
                 nh.loginfo(temp.c_str());
             }
             break;
-        case cmd_getIncSpeed:
-            cmd_result = this->update_oneMs_encoder();
-            if (cmd_result == HAL_OK) {
-                vPortEnterCritical();
-                for (int i = 0; i < 4; ++i) {
-                    this->motor_state.motorData.incInfo.encoderData[i] = this->motor_state.oneMs_encoder[i];
-                }
-                vPortExitCritical();
-                temp = "the IncSpeed has been update!";
-                nh.loginfo(temp.c_str());
-            }
-            break;
         case cmd_getAveSpeed:
             if (this->encoderCtrl.IsOpen) {
                 cmd_result = this->update_encoderdata();
@@ -323,6 +287,8 @@ HAL_StatusTypeDef Motor::topic_cmd(const uint8_t &cmd, const int16_t *TxData) {
                         this->motor_state.motorData.aveInfo.encoderData[i] =
                                 this->motor_state.current_encData.encoder_data[i]
                                 - this->motor_state.last_encData.encoder_data[i];
+                        if (i == 1 || i == 2)
+                            this->motor_state.motorData.aveInfo.encoderData[i] *= -1;
                     }
                     this->motor_state.motorData.aveInfo.duration = this->motor_state.current_encData.check_time -
                                                                    this->motor_state.last_encData.check_time;
@@ -343,29 +309,8 @@ HAL_StatusTypeDef Motor::topic_cmd(const uint8_t &cmd, const int16_t *TxData) {
                 nh.loginfo(temp.c_str());
             }
             break;
-        case cmd_xyMotion:
-            cmd_result = this->XY_motion(TxData[0], TxData[1]);
-            if (cmd_result == HAL_OK) {
-                temp = "the XYmotion is set successfully!";
-                nh.loginfo(temp.c_str());
-            }
-            break;
-        case cmd_swerveMotion:
-            cmd_result = this->swerve_motion(TxData[0], TxData[1]);
-            if (cmd_result == HAL_OK) {
-                temp = "the swerveMotion is set successfully!";
-                nh.loginfo(temp.c_str());
-            }
-            break;
-        case cmd_rotateMotion:
-            cmd_result = this->rotate_motion(TxData[0]);
-            if (cmd_result == HAL_OK) {
-                temp = "the rotateMotion is set successfully!";
-                nh.loginfo(temp.c_str());
-            }
-            break;
         case cmd_directeMotion:
-            cmd_result = this->directe_motion(TxData[1],TxData[2],TxData[3]);
+            cmd_result = this->directe_motion(TxData[2], TxData[0], TxData[1]);
             if (cmd_result == HAL_OK) {
                 temp = "the directMotion is set successfully!";
                 nh.loginfo(temp.c_str());
@@ -383,24 +328,6 @@ HAL_StatusTypeDef Motor::server_cmd(const communicate_with_stm32::MotorControl::
                                     communicate_with_stm32::MotorControl::Response &res) {
     HAL_StatusTypeDef cmd_result = HAL_OK;
     switch (req.cmd) {
-        case srv_checkEncoderData:
-            if (xSemaphoreTake(canMutex, 1000) == pdTRUE) {
-                cmd_result = this->update_encoderdata();
-                if (cmd_result == HAL_OK) {
-                    vPortEnterCritical();
-                    for (int i = 0; i < 4; ++i) {
-                        res.data[i] = this->motor_state.current_encData.encoder_data[i];
-                    }
-                    res.time = this->motor_state.motorData.aveInfo.time;
-                    vPortExitCritical();
-                }
-                xSemaphoreGive(canMutex);
-            } else {
-                nh.logwarn("Currently busy with work, please check later or turn on the "
-                           "scheduled query function");
-                cmd_result = HAL_ERROR;
-            }
-            break;
         case srv_startupEncoder:
             if (req.Key) {
                 if (pdTRUE == xSemaphoreTake(canMutex, 1000)) {
@@ -455,25 +382,27 @@ HAL_StatusTypeDef Motor::server_cmd(const communicate_with_stm32::MotorControl::
                 }
             }
             break;
-        case srv_checkSettedSpeed:
-            res.time = nh.now();
-            for (int i = 0; i < 4; ++i) {
-                res.data[i] = (float) this->motor_state.setted_speed[i];
+        case srv_startPowerCalc:
+            if (req.Key) {
+                if (xTimerChangePeriod(powerCalcHandle, req.Period, 100) && xTimerReset(powerCalcHandle, 100)) {
+                    this->powerCalcCtrl.IsOpen = true;
+                    this->powerCalcCtrl.freq = req.Period;
+                } else {
+                    cmd_result = HAL_ERROR;
+                }
+            } else {
+                if (xTimerStop(powerCalcHandle, 100))
+                    this->rosPubCtrl.IsOpen = false;
+                else {
+                    cmd_result = HAL_ERROR;
+                }
             }
             break;
-        case srv_pubMessage:
+        case srv_setPowerZero:
             if (req.Key) {
-                extern ros::Publisher motorState;
-                vPortEnterCritical();
-                for (int i = 0; i < 4; ++i) {
-                    this->motor_state.motorData.aveInfo.encoderData[i] =
-                            this->motor_state.current_encData.encoder_data[i]
-                            - this->motor_state.last_encData.encoder_data[i];
-                }
-                this->motor_state.motorData.aveInfo.duration = this->motor_state.current_encData.check_time -
-                                                               this->motor_state.last_encData.check_time;
-                vPortExitCritical();
-                motorState.publish(&this->motor_state.motorData);
+                hx711.Get_Maopi();
+            } else {
+                cmd_result = HAL_ERROR;
             }
             break;
         default:
@@ -496,19 +425,9 @@ const char *select_name(uint8_t &cmd) {
             return "updateBattery";
         case cmd_updateEncoderData:
             return "updateEncoderData";
-        case cmd_getIncSpeed:
-            return "getIncSpeed";
-        case cmd_clearEncoder:
-            return "clearEncoder";
-        case cmd_xyMotion:
-            return "xyMotion";
-        case cmd_swerveMotion:
-            return "swerveMotion";
-        case cmd_rotateMotion:
-            return "rotateMotion";
             //sever
-        case srv_checkEncoderData:
-            return "checkEncoderData";
+        case srv_startPowerCalc:
+            return "srv_startPowerCalc";
         case srv_startupBattery:
             return "startupBattery";
         case srv_startupEncoder:
@@ -517,10 +436,8 @@ const char *select_name(uint8_t &cmd) {
             return "getAveSpeed";
         case srv_controlPub:
             return "controlPub";
-        case srv_checkSettedSpeed:
-            return "checkSettedSpeed";
-        case srv_pubMessage:
-            return "pubMessage";
+        case srv_setPowerZero:
+            return "srv_setPowerZero";
         default:
             return "error";
     }
