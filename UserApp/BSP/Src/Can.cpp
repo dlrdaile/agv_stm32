@@ -57,6 +57,14 @@ HAL_StatusTypeDef Can::CAN_Init(CAN_FilterTypeDef *canFilter, uint16_t filtersiz
 }
 
 CanStatusTypeDef Can::CAN_SendMsg(const uint32_t &ExtID, uint8_t *TxData, const uint8_t &Data_Len) {
+    //每次读取前先将邮箱清空
+//    while ( HAL_CAN_GetRxFifoFillLevel(this->hcan, CAN_RX_FIFO0) != 0)
+//    {
+//        uint8_t *temp;
+//        CAN_RxHeaderTypeDef RxHeader;
+//        HAL_CAN_GetRxMessage(this->hcan, CAN_RX_FIFO0, &RxHeader, temp);
+//    }
+
     CAN_TxHeaderTypeDef TxHeader;
     TxHeader.ExtId = ExtID;
     TxHeader.StdId = 0;

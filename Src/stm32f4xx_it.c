@@ -62,7 +62,7 @@ extern UART_HandleTypeDef huart5;
 extern TIM_HandleTypeDef htim7;
 
 /* USER CODE BEGIN EV */
-#include "startup.h"
+#include "../UserApp/Work/Inc/startup.h"
 /* USER CODE END EV */
 
 /******************************************************************************/
