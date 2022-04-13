@@ -33,7 +33,7 @@ communicate_with_stm32::InitConfig pressCtrl;
 Key hsw2(SW2_GPIO_Port, SW2_Pin);
 Key hsw3(SW3_GPIO_Port, SW3_Pin);
 
-Led hled0(LED0_GPIO_Port, LED0_Pin, on_Low);
+Led hled0(LED0_GPIO_Port, LED0_Pin);
 Led hled1(LED1_GPIO_Port, LED1_Pin);
 
 HX711 hx711(HX711_SCK_GPIO_Port, HX711_SCK_Pin,HX711_DT_GPIO_Port,HX711_DT_Pin);
@@ -51,7 +51,7 @@ void startup() {
         InitMotor::Request init_req;
         InitMotor::Response init_res;
         initSrv.call(init_req,init_res);
-        nh.spinOnce();
+//        nh.spinOnce();
         if(init_res.success)
         {
             motor.encoderCtrl.isOpen = init_res.encoder_config.isOpen;
@@ -61,11 +61,15 @@ void startup() {
             pressCtrl.isOpen = init_res.press_config.isOpen;
             pressCtrl.freq = init_res.press_config.freq;
             hled1.Off();
+            hled0.On();
             break;
         }
         hled1.Toggle();
         HAL_IWDG_Refresh(&hiwdg);
-        HAL_Delay(1000);
+#if JLINK_DEBUG == 1
+        SEGGER_RTT_printf(0,"i'm in init\n");
+#endif
+        HAL_Delay(100);
     }
     nh.loginfo("init the system success!");
     last_cmd_tick = HAL_GetTick();
