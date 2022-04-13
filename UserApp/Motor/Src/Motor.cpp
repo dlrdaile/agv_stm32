@@ -91,7 +91,7 @@ HAL_StatusTypeDef Motor::topic_cmd(const uint8_t &cmd, const int16_t *TxData) {
             cmd_result = this->motor2can->update_battery();
             if (cmd_result == HAL_OK) {
 #if JLINK_DEBUG == 1
-                SEGGER_RTT_printf(0, "the receive data is %d\n", *((uint32_t *) this->CanRxBuffer));
+                SEGGER_RTT_printf(0, "the receive data is %d\n", *((uint32_t *) this->motor2can->CanRxBuffer));
 #endif
                 this->motor_state.battery_info.mVoltage = *((uint32_t *) this->motor2can->CanRxBuffer);
                 this->motor_state.battery_info.header.stamp = nh.now();
@@ -107,6 +107,10 @@ HAL_StatusTypeDef Motor::topic_cmd(const uint8_t &cmd, const int16_t *TxData) {
                 vPortEnterCritical();
                 for (int i = 0; i < 4; ++i) {
                     this->motor_state.encoder_info.encoderData[i] = ((int32_t *) this->motor2can->CanRxBuffer)[i];
+                    if(i==2 || i==1)
+                    {
+                        this->motor_state.encoder_info.encoderData[i]*=-1;
+                    }
                 }
                 this->motor_state.encoder_info.header.stamp = nh.now();
                 this->motor_state.encoder_info.header.stamp -= this->entimeOffSet;

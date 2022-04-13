@@ -10,7 +10,7 @@
 #include "string"
 #include "cmsis_os.h"
 #include "UserConfig.h"
-
+#include "SEGGER_RTT.h"
 extern ros::NodeHandle nh;
 
 static inline string chIDName(const uint32_t &ExtID) {

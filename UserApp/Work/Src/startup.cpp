@@ -65,7 +65,10 @@ void startup() {
         }
         hled1.Toggle();
         HAL_IWDG_Refresh(&hiwdg);
-        HAL_Delay(1000);
+#if JLINK_DEBUG == 1
+        SEGGER_RTT_printf(0,"i'm in init\n");
+#endif
+        HAL_Delay(100);
     }
     nh.loginfo("init the system success!");
     last_cmd_tick = HAL_GetTick();

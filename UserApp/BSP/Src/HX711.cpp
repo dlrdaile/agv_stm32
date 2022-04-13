@@ -16,7 +16,7 @@ HX711::HX711(GPIO_TypeDef *SCK_Port, uint16_t SCK_Pin, GPIO_TypeDef *DT_Port,
              uint16_t DT_Pin) {
   HX711_SCK = new Led(SCK_Port, SCK_Pin);
   HX711_DT = new Led(DT_Port, DT_Pin);
-  this->Get_Maopi();
+//  this->Get_Maopi();
 }
 HX711::~HX711() {
   if (this->HX711_SCK != NULL) {

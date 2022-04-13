@@ -4,9 +4,9 @@
 #include <string.h>
 #include <stdlib.h>
 #include "ros/msg.h"
-#include "geometry_msgs/Vector3.h"
-#include "geometry_msgs/Pose.h"
 #include "std_msgs/ColorRGBA.h"
+#include "geometry_msgs/Pose.h"
+#include "geometry_msgs/Vector3.h"
 
 namespace gazebo_msgs
 {

@@ -20,6 +20,7 @@
 #include "UserConfig.h"
 
 #include "iwdg.h"
+#include "SEGGER_RTT.h"
 
 using namespace communicate_with_stm32;
 ros::NodeHandle nh;
@@ -66,7 +67,7 @@ void ros_init() {
         nh.spinOnce();
         HAL_IWDG_Refresh(&hiwdg);
         hled0.Toggle();
-        HAL_Delay(1000);
+        HAL_Delay(500);
     }
     hled0.Off();
 }
